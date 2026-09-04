@@ -16,7 +16,7 @@ kept so Simon can follow Cole's development week to week and eventually build hi
 factory. **No factory runs here.** This repo is the installer (`bin/`) plus the template
 (`template/`) that `factory init` copies into a *target* repo.
 
-## Current state (as of 30938cf, pushed)
+## Current state (as of 1202f2c, pushed)
 
 - **Onboarding docs written and pushed** — five files in `docs/`, 1,500 lines. They fill
   the code-level gap Cole's own docs leave (his cover installing and operating; none read
@@ -32,6 +32,13 @@ factory. **No factory runs here.** This repo is the installer (`bin/`) plus the 
 
   Landed in `0e7aaf2`; corrected for the new remote layout in `5419a2a` and `30938cf`.
 
+- **`docs/git-setup.html`** (`1202f2c`) — the git setup explained for someone new to git:
+  what a remote is, the two-remote diagram, the three locks, why a fork/plain clone/no
+  remote/extra branch were each rejected, the sync routine, and `git merge --abort` as the
+  escape hatch. Dark house style per global CLAUDE.md. Also published privately at
+  https://claude.ai/code/artifact/fcf61e7c-881b-447a-b8b5-211d3bf3a556
+  (this session's watch on it has ended; re-watch only if needed).
+
 - **Repo made independent of Cole's.** `origin` is now
   `az9713/ai-software-factory` (**private**). Cole's repo is `upstream`, and its push URL
   is set to `DISABLED_never_push_to_cole`, so `git push upstream` fails loudly. Simon's
@@ -41,8 +48,9 @@ factory. **No factory runs here.** This repo is the installer (`bin/`) plus the 
   `git whatsnew` (fetch + list Cole's new commits, changes nothing) and
   `git sync` (fetch + merge + push to origin). Both tested.
 
-- Working tree clean. Local `30938cf` matches `origin/main`. Three commits ahead of
-  `upstream/main` (`51778f6`), all of them docs.
+- Working tree clean apart from `.ignore/cc1_cole.txt` — Simon's own scratch file,
+  untracked deliberately, not written by Claude. Local `1202f2c` matches `origin/main`.
+  Five commits ahead of `upstream/main` (`51778f6`), all of them docs.
 
 ## Next task
 

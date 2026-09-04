@@ -45,11 +45,16 @@ Every path in these docs is written from the target repo's root unless it starts
 ## Keeping these true
 
 These four files track code that Cole changes weekly. Each one opens with a `Tracks:`
-line naming the files it describes. After `git pull`, run:
+line naming the files it describes. Cole's repo is the `upstream` remote here; after
+fetching it, run:
 
 ```bash
-git log --oneline HEAD@{1}..HEAD -- template/factory/ template/harness/ bin/
+git fetch upstream
+git log --oneline main..upstream/main -- template/factory/ template/harness/ bin/
 ```
 
 Anything that touches a tracked file means the doc naming it needs re-reading. Doc
 changes go in the same commit as the behaviour they describe.
+
+See [study-guide.md](study-guide.md#following-cole-week-to-week) for the full pull
+workflow.

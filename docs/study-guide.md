@@ -280,15 +280,29 @@ Any one alone is theatre. All three is the reason to merge code nobody read.
 subjects are written as findings rather than as changes ("the import check could not
 fail", "three assumptions that break it on a Mac, all on the first tick").
 
-**After every `git pull`:**
+**The remote layout.** `origin` is your own private repo. `upstream` is Cole's, and
+its push URL is deliberately set to a non-repository so `git push upstream` fails
+loudly. Your commits never travel to him.
 
 ```bash
-git log --oneline HEAD@{1}..HEAD
-git log -p HEAD@{1}..HEAD -- docs/incidents.md
-git log --stat HEAD@{1}..HEAD -- template/factory/ template/harness/
+git remote -v
+# origin    https://github.com/az9713/ai-software-factory.git  (fetch/push)
+# upstream  https://github.com/coleam00/ai-software-factory.git (fetch)
+# upstream  DISABLED_never_push_to_cole                         (push)
 ```
 
-The second one is the highest-value command in this repo. **Every new incident entry is
+**Pulling his week's work:**
+
+```bash
+git fetch upstream
+git log --oneline main..upstream/main                        # what is new
+git log -p main..upstream/main -- docs/incidents.md          # the new incidents
+git log --stat main..upstream/main -- template/factory/ template/harness/
+git merge upstream/main                                      # or: git rebase upstream/main
+git push origin main
+```
+
+The second command is the highest-value one in this repo. **Every new incident entry is
 a new rule, and it names the mechanism that now enforces it.** Read the incident, then
 read the code it points at.
 

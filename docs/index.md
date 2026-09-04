@@ -28,6 +28,7 @@ Every path in these docs is written from the target repo's root unless it starts
 | [one-lap.md](one-lap.md) | One issue traced from filed to merged, through the real code | Second. This is the doc that lets you rebuild it. |
 | [component-map.md](component-map.md) | Every file, what it does, code vs prompt, Archon-coupled vs portable. Includes an Archon YAML primer. | When you start deciding what your own version keeps. |
 | [study-guide.md](study-guide.md) | Reading order, exercises you can run, how to follow Cole week to week | When you want a plan rather than a reference. |
+| [git-setup.html](git-setup.html) | Why this repo has two remotes, one of them write-disabled, and the two commands for staying in sync with Cole | When you touch git and want to know it is safe. Open in a browser. |
 
 ## Cole's own docs
 

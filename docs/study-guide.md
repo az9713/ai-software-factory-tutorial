@@ -291,18 +291,29 @@ git remote -v
 # upstream  DISABLED_never_push_to_cole                         (push)
 ```
 
-**Pulling his week's work:**
+**Cole publishes no releases and no tags.** One branch, `main`. "His latest" means the
+newest commits on `upstream/main`, and there is nothing else to track.
+
+**Two commands do the whole job.** Both are git aliases stored in this repo's
+`.git/config`, so they exist here and nowhere else:
 
 ```bash
-git fetch upstream
-git log --oneline main..upstream/main                        # what is new
-git log -p main..upstream/main -- docs/incidents.md          # the new incidents
-git log --stat main..upstream/main -- template/factory/ template/harness/
-git merge upstream/main                                      # or: git rebase upstream/main
-git push origin main
+git whatsnew     # fetch, then list his commits you do not have. Changes nothing.
+git sync         # fetch, merge his work into yours, push to your repo.
 ```
 
-The second command is the highest-value one in this repo. **Every new incident entry is
+`whatsnew` is always safe: it downloads and lists, and touches no file you have.
+Run it, read the subjects, then run `sync` when you want the changes.
+
+**To read the detail before taking it:**
+
+```bash
+git log -p main..upstream/main -- docs/incidents.md          # the new incidents, in full
+git log --stat main..upstream/main -- template/factory/ template/harness/
+```
+
+The first is the highest-value command in this repo. Every new incident entry is a new
+rule, and it names the mechanism that now enforces it. **Every new incident entry is
 a new rule, and it names the mechanism that now enforces it.** Read the incident, then
 read the code it points at.
 

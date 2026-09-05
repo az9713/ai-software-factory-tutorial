@@ -139,6 +139,36 @@ Archon (`github.com/coleam00/archon`) runs a workflow as a graph of nodes. Full 
 at `archon.diy/docs`. What follows is every field this workflow pack actually uses,
 read off the five YAML files — accurate for this pack, not a complete Archon spec.
 
+### The eight roles
+
+Everything below traces back to eight jobs Archon does for this repo. Each one is a
+row in the [portability table](#portability-what-archon-supplies) further down — this
+is the same list, named plainly:
+
+1. **Runs the workflow graphs** — the engine for Component 1: the five node graphs in
+   `.archon/workflows/factory/` (`factory-implement`, `factory-validate`,
+   `factory-triage`, `factory-fix`, `factory-regress`).
+2. **Fresh context per node** — `context: fresh` starts a new model session per node,
+   so the judge does not inherit the builder's reasoning.
+3. **Tool grant and deny leash per node** — `allowed_tools` / `denied_tools` (e.g.
+   `["Read(.factory/holdout/**)"]`) is what makes the holdout actually hidden from the
+   builder, not just hidden by convention.
+4. **A worktree per run** — the `--branch` flag isolates each lap's checkout so two
+   laps cannot collide.
+5. **Structured output between nodes** — `output_format` (a JSON schema) plus
+   `nodeio.py` validates one node's stdout before the next node consumes it.
+6. **Detached dispatch** — `--detach` returns immediately, so a 20-minute run does not
+   stall the next dispatch tick.
+7. **Run status and cost** — `archon workflow status` / `archon workflow get <id>
+   --json` feeds the ledger's `cost_usd` and the watchdog's spend detectors.
+8. **Model tier indirection plus conditionals** — `small`/`medium`/`large` insulates
+   the workflows from a provider swap; `when:` / `cancel:` let a plan stop a run early.
+
+Mechanically this is seven shell-out call sites — `dispatch.py:281,416,467,516,592`,
+`regress-trigger.py:62`, `doctor.py:113` — plus `bin/factory.py`'s `init` installing
+Archon if it is missing. See [Portability](#portability-what-archon-supplies) below
+for what breaks without each one.
+
 ### Workflow-level fields
 
 ```yaml

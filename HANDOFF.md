@@ -1,4 +1,4 @@
-# HANDOFF — resume point for this clone of ai-software-factory (now ai-software-factory-tutorial)
+# HANDOFF — resume point for ai-software-factory-tutorial
 
 **Read this first each new session, then [`docs/index.md`](docs/index.md).**
 This file is the live "what to do next". `docs/` is the standing reference and
@@ -16,14 +16,31 @@ kept so Simon can follow Cole's development week to week and eventually build hi
 factory. **No factory runs here.** This repo is the installer (`bin/`) plus the template
 (`template/`) that `factory init` copies into a *target* repo.
 
-**2026-09-05: renamed to `az9713/ai-software-factory-tutorial` and made public**,
-against the "Known constraints" note below about Cole's repo having no LICENSE. Simon
-chose to proceed anyway, framed explicitly as a tutorial clone (see the README banner).
-Revisit that note's caution if this ever needs re-litigating.
+Renamed to `az9713/ai-software-factory-tutorial` and made public on 2026-09-05 —
+see "Current state" below for the full record.
 
-## Current state (as of 66b10a0, pushed; this handoff refresh is the next commit)
+## Current state (as of `e1b1447`, pushed; this handoff refresh is the next commit)
 
-- **2026-09-05 (later, `3c428d4`): 22 diagrams added to Simon's five docs, plus new
+- **2026-09-05: GitHub Pages enabled, `docs/` is now a live site.** Source is
+  main branch, `/docs` folder (`gh api repos/az9713/ai-software-factory-tutorial/pages`,
+  build type `legacy`) — `docs/index.html` serves as the site root at
+  **https://az9713.github.io/ai-software-factory-tutorial/** (verified HTTP 200,
+  first build `built` in ~38s). Linked from the README banner (`e1b1447`). Known
+  gap, not fixed: `docs/index.html` links out to `../README.md` and three
+  `../template/*.md` files — those 404 on the live site since Pages only serves
+  `docs/`; they still work when browsing the repo itself on GitHub. Fix only if
+  Simon asks — likely answer is rewriting them to `github.com/.../blob/main/...`
+  URLs.
+
+- **2026-09-05: renamed to `az9713/ai-software-factory-tutorial` and made public**,
+  against the "Known constraints" note below about Cole's repo having no LICENSE.
+  Simon confirmed proceeding anyway when asked directly, framed explicitly as a
+  tutorial clone (README banner, `HANDOFF.md` intro above). `origin` remote URL
+  updated locally to match; `upstream` (Cole's repo) untouched and still named
+  `ai-software-factory`. Do not re-ask — this was a deliberate, confirmed call,
+  not an oversight to flag again.
+
+- **2026-09-05 (earlier, `3c428d4`): 22 diagrams added to Simon's five docs, plus new
   sections on what the docs had not covered.** Diagrams are ```` ```mermaid ```` fences in the
   `.md` (GitHub renders them natively). `scripts/md_to_html.py` now pre-renders each
   fence to inline SVG with **mermaid-cli** (`mmdc`, already installed globally via
@@ -135,9 +152,7 @@ Revisit that note's caution if this ever needs re-litigating.
   https://claude.ai/code/artifact/fcf61e7c-881b-447a-b8b5-211d3bf3a556
   (this session's watch on it has ended; re-watch only if needed).
 
-- **Repo made independent of Cole's.** `origin` is now
-  `az9713/ai-software-factory-tutorial` (**public**, renamed from `ai-software-factory`
-  and made public on 2026-09-05). Cole's repo is `upstream`, and its push URL
+- **Repo made independent of Cole's.** Cole's repo is `upstream`, and its push URL
   is set to `DISABLED_never_push_to_cole`, so `git push upstream` fails loudly. Simon's
   commits cannot travel upstream.
 
@@ -145,10 +160,11 @@ Revisit that note's caution if this ever needs re-litigating.
   `git whatsnew` (fetch + list Cole's new commits, changes nothing) and
   `git sync` (fetch + merge + push to origin). Both tested.
 
-- Working tree clean apart from `.ignore/` — Simon's own terminal captures, untracked
-  deliberately, not written by Claude. Local matches `origin/main` (verified via
-  `git ls-remote` after each push). Ahead of `upstream/main` (`51778f6`) by docs
-  commits only; Cole's files are untouched, so `git sync` stays conflict-free.
+- Working tree clean. `.ignore/` (Simon's own terminal captures) is now in
+  `.gitignore` (`0259b95`) so it no longer shows as untracked noise. Local matches
+  `origin/main` (verified via `git ls-remote` after each push, latest `e1b1447`).
+  Ahead of `upstream/main` (`51778f6`) by docs commits only; Cole's files are
+  untouched, so `git sync` stays conflict-free.
 
 ## Next task
 
@@ -180,6 +196,7 @@ If Simon asks for something else, that takes precedence.
 
 | Path | What |
 |---|---|
+| https://az9713.github.io/ai-software-factory-tutorial/ | the live site — `docs/` rendered as GitHub Pages |
 | `docs/index.md` | the map, and the two-repo model |
 | `docs/one-lap.md` | the full trace — read this before changing anything |
 | `docs/component-map.md` | what is Archon-coupled (7 shell-outs) vs portable (~5,000 lines) |

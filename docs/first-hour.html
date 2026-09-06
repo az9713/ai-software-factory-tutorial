@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>The first hour</title>
+<style>
+  :root {
+    --bg: #0f172a; --card: #1e293b; --text: #e2e8f0; --text-dim: #cbd5e1;
+    --muted: #94a3b8; --accent: #fb923c; --accent2: #2dd4bf;
+    --border: #334155; --code-bg: #1e293b;
+  }
+  body {
+    background: var(--bg); color: var(--text);
+    font-family: -apple-system, Segoe UI, Helvetica, Arial, sans-serif;
+    line-height: 1.6; max-width: 860px; margin: 0 auto; padding: 2.5rem 1.5rem 4rem;
+  }
+  h1, h2, h3, h4 { color: var(--text); line-height: 1.3; }
+  h1 { border-bottom: 1px solid var(--border); padding-bottom: 0.5rem; }
+  h2 { border-bottom: 1px solid var(--border); padding-bottom: 0.3rem; margin-top: 2.5rem; }
+  a { color: var(--accent2); }
+  p, li { color: var(--text-dim); }
+  code { background: var(--code-bg); border: 1px solid var(--border); border-radius: 3px; padding: 0.1em 0.35em; font-size: 0.9em; }
+  pre { background: var(--code-bg); border: 1px solid var(--border); border-radius: 6px; padding: 1rem; overflow-x: auto; }
+  pre code { border: none; padding: 0; background: none; }
+  blockquote { border-left: 3px solid var(--accent); margin-left: 0; padding-left: 1rem; color: var(--muted); }
+  table { border-collapse: collapse; width: 100%; overflow-x: auto; display: block; }
+  th, td { border: 1px solid var(--border); padding: 0.5rem 0.75rem; text-align: left; }
+  th { background: var(--card); }
+  hr { border: none; border-top: 1px solid var(--border); margin: 2rem 0; }
+</style>
+</head>
+<body>
+<h1 id="the-first-hour">The first hour</h1>
+<p>What to do after <code>factory init</code>, in order.</p>
+<p>The doctor is a checklist and working through it is the build. It fails on a fresh
+install. That is it working.</p>
+<hr />
+<h2 id="1-missionmd-and-mostly-its-out-of-scope-list">1. <code>MISSION.md</code>, and mostly its out-of-scope list</h2>
+<p>Half an hour, and the half hour that decides the most.</p>
+<p>The in-scope list is easy and you will get it roughly right first time. The
+out-of-scope list is the one that does work:</p>
+<blockquote>
+<p>It is how an agent recognises that a plausible, well-argued, easy-to-implement
+request is drift rather than a good idea.</p>
+</blockquote>
+<p>Aim for at least five, and make them things a reasonable person would genuinely
+ask for. "No payments" only earns its keep if somebody would otherwise ask for
+payments.</p>
+<p><strong>Sort your non-goals into three piles.</strong> A spec's non-goals are always a mix, and
+a human reading them just knows which is which. An agent does not.</p>
+<ul>
+<li><strong>Never.</strong> Goes in <code>MISSION.md</code>.</li>
+<li><strong>Not yet.</strong> Goes in the backlog and must not appear in <code>MISSION.md</code>. Anything
+  listed out of scope is refused forever, including the quarter it becomes the
+  roadmap.</li>
+<li><strong>Never, and it is a property rather than a feature.</strong> That is an invariant and
+  gets its own section.</li>
+</ul>
+<p>Then write the section people forget: what the factory does not own. Whether it
+feels right, looks right, reads right. A green gate never means the product is
+good. It means the layer a machine can check is intact.</p>
+<hr />
+<h2 id="2-harnessend-to-endmd">2. <code>harness/END-TO-END.md</code></h2>
+<p>Two to five journeys, in plain English, each one the whole path a person takes to
+get something they wanted.</p>
+<p>An agent reads this file on every validation run, drives your app, and reports what
+it saw. There is no script to keep in sync, which is the point: a scripted
+end-to-end runs the same two requests forever and goes stale the week after it is
+written, still passing.</p>
+<p><strong>Assert what a person would notice and complain about.</strong> <code>200 OK</code> is not evidence
+the page said the right thing. Name the number:</p>
+<blockquote>
+<p>Ana is owed exactly 666. She paid 1000 and her own share was 334.</p>
+</blockquote>
+<p><strong>Use values that appear nowhere else in the repo.</strong> A string the builder can grep
+is a string it can special-case.</p>
+<p><strong>The reachability constraint is an architecture decision.</strong> The harness reaches
+software three ways: <code>http</code>, <code>cli</code>, <code>library</code>. A rendered window, a game loop, a
+canvas is none of them. The rules have to live behind a headless surface something
+can drive. On a new project that is nearly free to arrange, and a rewrite
+afterwards.</p>
+<hr />
+<h2 id="3-factoryholdoutholdoutmd">3. <code>.factory/holdout/HOLDOUT.md</code></h2>
+<p>Everything in <code>harness/</code> sits inside the builder's optimisation loop: it can read
+those checks, run them, and iterate until they are green. Given enough attempts it
+will. That is what you asked for, and it is exactly why passing them proves less
+than it feels like it does.</p>
+<p>The holdout is different only because the builder never sees it. Verify that, do
+not assume it: probe the deny list in both directions and watch a node read the
+file without it and fail to read it with it.</p>
+<p>Four rules, and the third earns its keep:</p>
+<ol>
+<li><strong>Write them before the work.</strong> A scenario written after seeing the
+   implementation is a description of the implementation.</li>
+<li><strong>Do not reuse a journey.</strong> If it is in <code>END-TO-END.md</code>, the builder has read it.</li>
+<li><strong>Compose.</strong> The dominant real failure is not cheating, it is feature isolation:
+   parts individually correct that never work together. Unit tests test features in
+   isolation by definition, so what they measure is precisely the thing that is not
+   broken.</li>
+<li><strong>Assert exact figures, not properties.</strong> This cost a real escape here: a
+   holdout that recorded five expenses and asserted "the balances sum to zero" was
+   sailed past by a defect that dropped four of them, because one expense's
+   balances sum to zero exactly as five do. Work the numbers out by hand.</li>
+</ol>
+<hr />
+<h2 id="4-the-mutation-set">4. The mutation set</h2>
+<p>Six to ten deliberate defects, injected into real source on a throwaway copy. Each
+one must make the gate go red.</p>
+<p>Everything else in the gate asks "is this build good?". This asks "would this gate
+know if it were not?", and until you have run it you have no evidence any of your
+checks can fail at all.</p>
+<p><strong>Aim one at each rung, and read which rung caught each one.</strong> A set built only
+from logic defects gets caught entirely by the unit suite, and the journey, holdout
+and app-start rungs are never once shown to be able to fail. A perfect score can
+mean "the unit suite can fail" and nothing more.</p>
+<p><strong>Aiming is not landing.</strong> Both non-unit defects here landed on the unit suite the
+first time. 10/10, four rungs claimed, two of them never demonstrated. A defect
+aimed at a rung has to be invisible to every rung above it.</p>
+<p>This is also what keeps the agent-driven rungs honest. A model reporting on its own
+work is a claim; a planted defect it failed to notice is a measurement.</p>
+<hr />
+<h2 id="4b-the-one-thing-you-do-not-have-to-build">4b. The one thing you do not have to build</h2>
+<p><code>factory/_selftest.py</code> ships done and the doctor runs it every time. It is the
+mutation set aimed at the factory rather than at your software: an empty run list
+must keep a lock, an unrecognised status must keep a lock, <code>needs-human</code> must stay
+terminal, an assertion with nothing observed must be rejected.</p>
+<p>You do need to know it runs, because the failures it pins do not look like
+failures. A dispatcher that mis-decides which laps are alive produces a repository
+that looks exactly like a quiet one.</p>
+<hr />
+<h2 id="5-the-ratchet">5. The ratchet</h2>
+<p>Set the floors to what the gate just asserted. Then understand the one failure
+mode.</p>
+<p><strong>Slack is the gap between observed and floor, and it is exactly the number of
+assertions that could be deleted with the gate still green.</strong> It grows as the
+harness improves, because raising the floor is a protected edit the factory cannot
+make. Measured on a real factory, a hole went from 7 to 33 in one cycle because the
+harness got better.</p>
+<p>So slack holds the merge rather than printing a note. A note gets read once, by the
+person who already knew.</p>
+<p><strong>A hold is a state, not a sentence.</strong> A held PR gets <code>factory:held</code>, which nothing
+dispatches and no node may leave. <code>factory accept &lt;target&gt;</code> archives the
+assumptions and sends it back to <code>open</code> for a fresh validation. The first version
+posted the explanation as a PR comment and set the PR to <code>passed</code>; the dispatcher
+merged it forty-five seconds later, because <code>passed</code> is what a mergeable PR is
+called.</p>
+<hr />
+<h2 id="6-the-escalation-channel">6. The escalation channel</h2>
+<p><code>FACTORY_NOTIFY_CMD</code> in <code>factory/config.py</code>, defaulting to <code>.factory/notify.sh</code>.
+Set <code>FACTORY_NTFY_TOPIC</code> or <code>FACTORY_WEBHOOK_URL</code> and test it once:</p>
+<pre><code class="language-bash">python factory/notify.py --test
+</code></pre>
+<p>"I will just check the file" is not an answer. Nobody checks the file. That is the
+whole reason this exists.</p>
+<hr />
+<h2 id="7-one-lap-by-hand">7. One lap by hand</h2>
+<pre><code class="language-bash">factory run implement gh:issue:1
+</code></pre>
+<p>Watch it. Read the plan it wrote, the PR body, the judge's verdict. Do not proceed
+on a factory that has never completed a lap.</p>
+<p>Then merge that first PR yourself, whatever the gate says. You are not testing the
+merge yet, you are reading the work.</p>
+<hr />
+<h2 id="8-the-dial-one-notch-at-a-time">8. The dial, one notch at a time</h2>
+<pre><code class="language-bash">factory level 1     # an accepted issue becomes a PR
+factory level 2     # + the validator writes a verdict
+factory level 3     # + it merges without you reading the diff
+</code></pre>
+<p>Each is refused until the doctor says the evidence supports it. Watch one full
+cycle at each before the next.</p>
+<p>Stopping below 3 is legitimate, for an unmovable review requirement or a blast
+radius you cannot absorb. Write into <code>FACTORY.md</code> what would have to be true to go
+further, so it stays a decision rather than a dial nobody touched again.</p>
+<hr />
+<h2 id="9-the-trigger-last">9. The trigger, last</h2>
+<pre><code class="language-bash">factory arm
+</code></pre>
+<p>Refused below level 1, because a scheduler at level 0 wakes up forever and
+correctly does nothing, which is exactly how people convince themselves a factory
+is running when it has never completed a lap.</p>
+<p><strong>Check what it installed.</strong> <code>arm</code> schedules two jobs: the dispatcher on the
+interval, and the weekly regression. The first version installed only the
+dispatcher on Windows and reported <code>ARMED</code>, so merged code was never re-tested and
+nothing reported the job that was never created.</p>
+<pre><code class="language-powershell">Get-ScheduledTask | Where-Object { $_.TaskName -like &quot;factory-*&quot; }
+</code></pre>
+<pre><code class="language-bash">crontab -l | grep factory
+</code></pre>
+<hr />
+<h2 id="10-use-the-stop-button-once-on-purpose">10. Use the stop button once, on purpose</h2>
+<pre><code class="language-bash">factory halt &quot;testing the stop button&quot;
+factory tick          # refuses to dispatch anything
+factory resume
+</code></pre>
+<p>Then the remote half, which is the one you reach for from a phone:</p>
+<pre><code class="language-bash">gh issue edit &lt;any open issue&gt; --add-label factory:stop
+</code></pre>
+<p>It is one tick behind. GitHub does not guarantee you read your own write
+immediately, so the tick right after you add the label can still dispatch. The
+local file is instant. That is the trade for a button that works when you are not
+at the machine.</p>
+<p>A stop button nobody has used is a stop button nobody knows works. Write the date
+in <code>FACTORY.md</code>.</p>
+<hr />
+<h2 id="then-deployment">Then: deployment</h2>
+<p>Until <code>FACTORY_DEPLOY_CMD</code> and <code>FACTORY_HEALTH_CMD</code> are set, merging is where this
+stops, and the loop is not closed until a stranger can see the change. Everything
+before that is a PR generator with very good gates.</p>
+</body>
+</html>

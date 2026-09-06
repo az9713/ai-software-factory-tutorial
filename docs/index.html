@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>Documentation</title>
+<style>
+  :root {
+    --bg: #0f172a; --card: #1e293b; --text: #e2e8f0; --text-dim: #cbd5e1;
+    --muted: #94a3b8; --accent: #fb923c; --accent2: #2dd4bf;
+    --border: #334155; --code-bg: #1e293b;
+  }
+  body {
+    background: var(--bg); color: var(--text);
+    font-family: -apple-system, Segoe UI, Helvetica, Arial, sans-serif;
+    line-height: 1.6; max-width: 860px; margin: 0 auto; padding: 2.5rem 1.5rem 4rem;
+  }
+  h1, h2, h3, h4 { color: var(--text); line-height: 1.3; }
+  h1 { border-bottom: 1px solid var(--border); padding-bottom: 0.5rem; }
+  h2 { border-bottom: 1px solid var(--border); padding-bottom: 0.3rem; margin-top: 2.5rem; }
+  a { color: var(--accent2); }
+  p, li { color: var(--text-dim); }
+  code { background: var(--code-bg); border: 1px solid var(--border); border-radius: 3px; padding: 0.1em 0.35em; font-size: 0.9em; }
+  pre { background: var(--code-bg); border: 1px solid var(--border); border-radius: 6px; padding: 1rem; overflow-x: auto; }
+  pre code { border: none; padding: 0; background: none; }
+  blockquote { border-left: 3px solid var(--accent); margin-left: 0; padding-left: 1rem; color: var(--muted); }
+  table { border-collapse: collapse; width: 100%; overflow-x: auto; display: block; }
+  th, td { border: 1px solid var(--border); padding: 0.5rem 0.75rem; text-align: left; }
+  th { background: var(--card); }
+  hr { border: none; border-top: 1px solid var(--border); margin: 2rem 0; }
+</style>
+</head>
+<body>
+<h1 id="documentation">Documentation</h1>
+<p>The AI Software Factory takes work in as a GitHub issue and ships validated code out,
+with nobody reading the diff. This directory is the map.</p>
+<hr />
+<h2 id="two-repos-always">Two repos, always</h2>
+<p>Nothing here makes sense until you hold this in your head.</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>This repo</strong></td>
+<td>The installer (<code>bin/</code>) and the template (<code>template/</code>). Nothing runs a factory here.</td>
+</tr>
+<tr>
+<td><strong>A target repo</strong></td>
+<td>Where <code>python bin/factory.py init</code> copies <code>template/</code> into. This is where laps actually run: labels, worktrees, <code>.factory/runs/</code>, locks, ledger.</td>
+</tr>
+</tbody>
+</table>
+<p>Every path in these docs is written from the target repo's root unless it starts with
+<code>template/</code> or <code>bin/</code>. <code>template/factory/dispatch.py</code> in this repo becomes
+<code>factory/dispatch.py</code> in yours.</p>
+<hr />
+<h2 id="start-here">Start here</h2>
+<table>
+<thead>
+<tr>
+<th>Doc</th>
+<th>What's inside</th>
+<th>Read it when</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="key-concepts.html">key-concepts.md</a></td>
+<td>Every term Cole uses, defined, with the file that enforces it</td>
+<td>First. Everything else assumes these.</td>
+</tr>
+<tr>
+<td><a href="one-lap.html">one-lap.md</a></td>
+<td>One issue traced from filed to merged, through the real code</td>
+<td>Second. This is the doc that lets you rebuild it.</td>
+</tr>
+<tr>
+<td><a href="component-map.html">component-map.md</a></td>
+<td>Every file, what it does, code vs prompt, Archon-coupled vs portable. Includes an Archon YAML primer.</td>
+<td>When you start deciding what your own version keeps.</td>
+</tr>
+<tr>
+<td><a href="study-guide.html">study-guide.md</a></td>
+<td>Reading order, exercises you can run, how to follow Cole week to week</td>
+<td>When you want a plan rather than a reference.</td>
+</tr>
+<tr>
+<td><a href="git-setup.html">git-setup.html</a></td>
+<td>Why this repo has two remotes, one of them write-disabled, and the two commands for staying in sync with Cole</td>
+<td>When you touch git and want to know it is safe. Open in a browser.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="coles-own-docs">Cole's own docs</h2>
+<table>
+<thead>
+<tr>
+<th>Doc</th>
+<th>What's inside</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="../README.md">../README.md</a></td>
+<td>What it is, how to install it, the command list, what it does not do</td>
+</tr>
+<tr>
+<td><a href="first-hour.html">first-hour.md</a></td>
+<td>What to do after <code>factory init</code>, in order. The operator's quickstart.</td>
+</tr>
+<tr>
+<td><a href="incidents.html">incidents.md</a></td>
+<td>Every way this has been wrong, and the mechanism added each time. 1,326 lines. It is the architecture-decision log.</td>
+</tr>
+<tr>
+<td><a href="../template/FACTORY_RULES.md">../template/FACTORY_RULES.md</a></td>
+<td>The rulebook every workflow reads at run start. Ships ~95% filled in.</td>
+</tr>
+<tr>
+<td><a href="../template/MISSION.md">../template/MISSION.md</a></td>
+<td>The template for the one file nobody can write for you</td>
+</tr>
+<tr>
+<td><a href="../template/FACTORY.md">../template/FACTORY.md</a></td>
+<td>The template for your factory's own status page</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="keeping-these-true">Keeping these true</h2>
+<p>These four files track code that Cole changes weekly. Each one opens with a <code>Tracks:</code>
+line naming the files it describes. Cole's repo is the <code>upstream</code> remote here; after
+fetching it, run:</p>
+<pre><code class="language-bash">git fetch upstream
+git log --oneline main..upstream/main -- template/factory/ template/harness/ bin/
+</code></pre>
+<p>Anything that touches a tracked file means the doc naming it needs re-reading. Doc
+changes go in the same commit as the behaviour they describe.</p>
+<p>See <a href="study-guide.html#following-cole-week-to-week">study-guide.md</a> for the full pull
+workflow.</p>
+</body>
+</html>

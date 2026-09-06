@@ -1,0 +1,466 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>Study guide</title>
+<style>
+  :root {
+    --bg: #0f172a; --card: #1e293b; --text: #e2e8f0; --text-dim: #cbd5e1;
+    --muted: #94a3b8; --accent: #fb923c; --accent2: #2dd4bf;
+    --border: #334155; --code-bg: #1e293b;
+  }
+  body {
+    background: var(--bg); color: var(--text);
+    font-family: -apple-system, Segoe UI, Helvetica, Arial, sans-serif;
+    line-height: 1.6; max-width: 860px; margin: 0 auto; padding: 2.5rem 1.5rem 4rem;
+  }
+  h1, h2, h3, h4 { color: var(--text); line-height: 1.3; }
+  h1 { border-bottom: 1px solid var(--border); padding-bottom: 0.5rem; }
+  h2 { border-bottom: 1px solid var(--border); padding-bottom: 0.3rem; margin-top: 2.5rem; }
+  a { color: var(--accent2); }
+  p, li { color: var(--text-dim); }
+  code { background: var(--code-bg); border: 1px solid var(--border); border-radius: 3px; padding: 0.1em 0.35em; font-size: 0.9em; }
+  pre { background: var(--code-bg); border: 1px solid var(--border); border-radius: 6px; padding: 1rem; overflow-x: auto; }
+  pre code { border: none; padding: 0; background: none; }
+  blockquote { border-left: 3px solid var(--accent); margin-left: 0; padding-left: 1rem; color: var(--muted); }
+  table { border-collapse: collapse; width: 100%; overflow-x: auto; display: block; }
+  th, td { border: 1px solid var(--border); padding: 0.5rem 0.75rem; text-align: left; }
+  th { background: var(--card); }
+  hr { border: none; border-top: 1px solid var(--border); margin: 2rem 0; }
+</style>
+</head>
+<body>
+<h1 id="study-guide">Study guide</h1>
+<p>A reading order, things you can run today, and how to follow Cole week to week.</p>
+<blockquote>
+<p><strong>Tracks:</strong> the repo as a whole. The "follow along" section tracks <code>git log</code>.</p>
+</blockquote>
+<hr />
+<h2 id="the-one-idea">The one idea</h2>
+<p><strong>The automation is the easy half. Being able to trust a merge nobody read is the hard
+half, and most of what is in here exists for that.</strong></p>
+<p>Read every file asking "what would go wrong without this?" — Cole answers that in the
+docstring nearly every time, and the answers are the actual curriculum. This is the
+rare codebase where the comments are more valuable than the code.</p>
+<hr />
+<h2 id="session-1-the-map-90-minutes-reading-only">Session 1 — the map (90 minutes, reading only)</h2>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>Read</th>
+<th>Why</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td><code>README.md</code></td>
+<td>The pitch, the dial, the command list, what it does not do</td>
+</tr>
+<tr>
+<td>2</td>
+<td><a href="key-concepts.html">key-concepts.md</a></td>
+<td>Every term, once</td>
+</tr>
+<tr>
+<td>3</td>
+<td><code>template/FACTORY_RULES.md</code> (315 lines)</td>
+<td>The rulebook. Read §1 triage, §3 gates, §5 protected files, §7 the two kinds of value.</td>
+</tr>
+<tr>
+<td>4</td>
+<td><a href="one-lap.html">one-lap.md</a></td>
+<td>The trace</td>
+</tr>
+<tr>
+<td>5</td>
+<td><code>docs/first-hour.md</code></td>
+<td>What you would actually do after installing</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Stop and check yourself.</strong> Answer these without looking:</p>
+<ol>
+<li>Why does a <code>held</code> PR exist rather than just a comment saying "merge held"?</li>
+<li>Why is the holdout read-denied rather than just write-protected?</li>
+<li>Why does the dispatcher poll instead of using a webhook?</li>
+<li>What is the difference between a judgement value and a product value?</li>
+<li>What does exit code 2 mean in <code>guard.py</code>, and why is that the safe direction?</li>
+</ol>
+<p>Answers are in <a href="key-concepts.html">key-concepts.md</a> and <a href="one-lap.html">one-lap.md</a>.</p>
+<hr />
+<h2 id="session-2-the-code-three-hours-in-this-order">Session 2 — the code (three hours, in this order)</h2>
+<p>Read the docstring first in every case. Cole writes the <em>why</em> at the top and the
+<em>what</em> below it.</p>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>File</th>
+<th>Lines</th>
+<th>What to take from it</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td><code>template/factory/config.py</code></td>
+<td>462</td>
+<td>Every knob in the system, on one screen. Note <code>ROOT</code> vs <code>SHARED</code> and <code>_base_branch()</code>.</td>
+</tr>
+<tr>
+<td>2</td>
+<td><code>template/factory/state.py</code></td>
+<td>752</td>
+<td>Read <code>TRANSITIONS</code> (line 88) and <code>next_action()</code> (line 476). The whole scheduling policy is one function.</td>
+</tr>
+<tr>
+<td>3</td>
+<td><code>template/factory/dispatch.py</code></td>
+<td>906</td>
+<td>Read <code>main()</code> (line 637) top to bottom. The order of the six phases is the design.</td>
+</tr>
+<tr>
+<td>4</td>
+<td><code>template/harness/ci.py</code></td>
+<td>348</td>
+<td>Read <code>main()</code> (line 190). Six rungs, one marker each.</td>
+</tr>
+<tr>
+<td>5</td>
+<td><code>template/factory/gate.py</code></td>
+<td>682</td>
+<td>Read <code>main()</code> (line 229). This is the most consequential 300 lines in the repo.</td>
+</tr>
+<tr>
+<td>6</td>
+<td><code>template/factory/merge.py</code></td>
+<td>453</td>
+<td>Read <code>main()</code> (line 208). Note that it re-checks everything.</td>
+</tr>
+<tr>
+<td>7</td>
+<td><code>template/factory/guard.py</code></td>
+<td>279</td>
+<td>Short. Note that it fails closed.</td>
+</tr>
+<tr>
+<td>8</td>
+<td><code>template/factory/watchdog.py</code></td>
+<td>337</td>
+<td>Read <code>assess()</code> (line 140). A pure function is why the detectors are testable.</td>
+</tr>
+<tr>
+<td>9</td>
+<td><code>template/.archon/workflows/factory/implement/factory-implement.yaml</code></td>
+<td>—</td>
+<td>The comments are longer than the config, and they are the point.</td>
+</tr>
+<tr>
+<td>10</td>
+<td><code>template/.archon/workflows/factory/implement/commands/plan.md</code></td>
+<td>169</td>
+<td>The prompt Cole tells you to replace. Read what it is doing first.</td>
+</tr>
+<tr>
+<td>11</td>
+<td><code>template/.archon/workflows/factory/validate/scripts/brief.py</code></td>
+<td>137</td>
+<td>The docstring is the single best bug story in the repo.</td>
+</tr>
+</tbody>
+</table>
+<p>Skim <code>template/factory/_selftest.py</code> (1,272 lines) rather than reading it. It ships
+done. Know that it exists and that <code>doctor</code> runs it every time.</p>
+<hr />
+<h2 id="session-3-run-it">Session 3 — run it</h2>
+<p>Nothing here needs a real project, a remote, or <code>gh</code>. All four are offline, and all
+four were run in this clone on 2026-09-04 — the output below is what they printed.</p>
+<p><strong>1. The machinery self-test.</strong> 229 invariants, no network.</p>
+<pre><code class="language-bash">cd template &amp;&amp; python factory/_selftest.py
+</code></pre>
+<pre><code>Every machinery invariant holds.
+SELFTEST_PASSED checks=229
+</code></pre>
+<p><strong>2. Mutation-test the self-test.</strong> Proves those checks can actually fail. Takes a few
+minutes — it injects each defect into a throwaway copy and requires the self-test to go
+red.</p>
+<pre><code class="language-bash">python bin/selfcheck-mutations.py
+</code></pre>
+<pre><code>SELFCHECK_MUTATIONS_CAUGHT=28 applicable=28
+Every applicable defect turns the self-test red.
+</code></pre>
+<p>Two defects report <code>NOT_APPLICABLE</code> rather than escaping — they change no behaviour, and
+the runner says so rather than counting them as caught.</p>
+<p><strong>3. Audit the machinery.</strong> Cross-file invariants no single file can check alone.</p>
+<pre><code class="language-bash">python bin/audit.py
+</code></pre>
+<pre><code>No findings. The machinery's cross-file invariants hold.
+0 failing, 0 warnings
+</code></pre>
+<p><strong>4. Read the watchdog's own thresholds.</strong> The live version of the detector table in
+<a href="key-concepts.html#memory-and-safety">key-concepts.md</a>.</p>
+<pre><code class="language-bash">cd template &amp;&amp; python factory/watchdog.py --explain
+</code></pre>
+<pre><code>  repeat-dispatch          one action+target 3x with no completion, or 6x regardless
+  escalation-ignored       a target dispatched after being escalated to a human
+  all-failing              5 settled runs, none completed
+  no-progress              8 dispatches, none completed
+  spend-cap                $25.00 in 120m
+  spend-without-progress   $8.00 buying nothing
+  spend-blind              WARN only: most settled runs carry no cost, so D5 is half-blind
+window: 120m
+</code></pre>
+<p><strong>5. Then install it somewhere throwaway.</strong> A small repo with a git remote, <code>gh</code>
+authenticated, and a test suite that runs.</p>
+<pre><code class="language-bash">cd /path/to/throwaway-repo
+python /path/to/ai-software-factory/bin/factory.py init
+python factory/doctor.py
+</code></pre>
+<p><strong>It will fail. That is it working.</strong> The doctor is a checklist and its failures are
+your todo list, each naming the autonomy level it blocks. Do not try to make it green
+in one sitting.</p>
+<p>Then work <code>docs/first-hour.md</code> in order: <code>MISSION.md</code> (half an hour, and the half hour
+that decides the most) → <code>harness/END-TO-END.md</code> → <code>.factory/holdout/HOLDOUT.md</code> → the
+mutation set → the ratchet → the escalation channel → one lap by hand → the dial, one
+notch at a time → <code>factory arm</code> → use the stop button once, on purpose.</p>
+<hr />
+<h2 id="the-four-things-that-are-genuinely-hard">The four things that are genuinely hard</h2>
+<p>Everything else ships done. Budget your attention here.</p>
+<h3 id="1-the-out-of-scope-list-in-missionmd">1. The out-of-scope list in <code>MISSION.md</code></h3>
+<p>The section that decides whether any of this works. It is how an agent recognises that
+a plausible, well-argued, easy-to-implement request is <em>drift</em> rather than a good idea.
+Without it, every request is arguably in scope, because almost every feature is
+defensible in isolation — and the factory will build all of them.</p>
+<p>Sort your non-goals into three piles, because an agent cannot:</p>
+<ul>
+<li><strong>Never</strong> → <code>MISSION.md</code>.</li>
+<li><strong>Not yet</strong> → the backlog, and it must <strong>not</strong> appear in <code>MISSION.md</code>. Anything
+  listed out of scope is refused forever, including the quarter it becomes the roadmap.</li>
+<li><strong>Never, and it is a property rather than a feature</strong> → that is an invariant, and it
+  gets its own section.</li>
+</ul>
+<p>Aim for at least five, and make them things a reasonable person would genuinely ask
+for. "No payments" only earns its keep if somebody would otherwise ask for payments.</p>
+<h3 id="2-journeys-that-assert-a-value">2. Journeys that assert a value</h3>
+<p><code>harness/END-TO-END.md</code>. "The page loads" passes against an app that returns an empty
+body forever. Name the number: <em>"Ana is owed exactly 666. She paid 1000 and her own
+share was 334."</em></p>
+<p>Use values that appear nowhere else in the repo. A string the builder can grep is a
+string it can special-case.</p>
+<p>Describe what the product <strong>does today</strong>, never what it should do. A journey for
+behaviour that does not exist yet leaves the gate red before the first lap, and a
+permanently red gate means nothing merges — including the change that would make the
+journey pass.</p>
+<blockquote>
+<p><strong>The reachability constraint is an architecture decision.</strong> The harness reaches
+software three ways: <code>http</code>, <code>cli</code>, <code>library</code>. A rendered window, a game loop, a
+canvas is none of them. The rules have to live behind a headless surface something
+can drive. On a new project that is nearly free to arrange, and a rewrite afterwards.</p>
+</blockquote>
+<h3 id="3-a-holdout-that-composes">3. A holdout that composes</h3>
+<p><code>.factory/holdout/HOLDOUT.md</code>. Four rules, and the third earns its keep:</p>
+<ol>
+<li>Write them <strong>before</strong> the work. A scenario written after seeing the implementation
+   is a description of the implementation.</li>
+<li>Do not reuse a journey. If it is in <code>END-TO-END.md</code>, the builder has read it.</li>
+<li><strong>Compose.</strong> The dominant real failure is not cheating, it is feature isolation:
+   parts individually correct that never work together. Unit tests test features in
+   isolation by definition, so what they measure is precisely the thing that is not
+   broken.</li>
+<li>Assert exact figures, not properties. This cost a real escape: a holdout that
+   recorded five expenses and asserted "the balances sum to zero" was sailed past by a
+   defect that dropped four of them, because one expense's balances sum to zero exactly
+   as five do. Work the numbers out by hand.</li>
+</ol>
+<p>Verify the deny list in both directions. Watch a node read the file without it, and
+fail to read it with it.</p>
+<h3 id="4-a-mutation-set-spread-across-rungs">4. A mutation set spread across rungs</h3>
+<p>Six to ten deliberate defects in <code>harness/mutations/defects.json</code>. Aim one at each
+rung, and <strong>read which rung caught each one</strong>.</p>
+<p>A set built only from logic defects gets caught entirely by the unit suite, and the
+journey, holdout and app-start rungs are never once shown to be able to fail. A perfect
+score can mean "the unit suite can fail" and nothing more.</p>
+<p><strong>Aiming is not landing.</strong> Both non-unit defects in Cole's own set landed on the unit
+suite the first time: 10/10, four rungs claimed, two of them never demonstrated. A
+defect aimed at a rung has to be invisible to every rung above it.</p>
+<hr />
+<h2 id="building-your-own-version">Building your own version</h2>
+<p>You said "both" — understand it first, then decide. Here is what each path costs.</p>
+<h3 id="path-a-install-this-template-and-adapt">Path A — install this template and adapt</h3>
+<p>The work is entirely in <code>config.py</code> plus the three human files, and the prompts if you
+want your own process.</p>
+<table>
+<thead>
+<tr>
+<th>Step</th>
+<th>Where</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Point the harness at your stack</td>
+<td><code>harness/harness.config.json</code> — <code>static</code>, <code>unit</code>, <code>unit_count_pattern</code>, <code>driver</code></td>
+</tr>
+<tr>
+<td>Set the journey agent</td>
+<td><code>harness.config.json</code> → <code>agent.cmd</code>. It <strong>must</strong> be able to run a shell command; an agent that can only edit files cannot use your app.</td>
+</tr>
+<tr>
+<td>Rename markers if your harness speaks differently</td>
+<td><code>config.MARKER_APP_RAN</code>, <code>MARKER_E2E</code>, <code>REQUIRED_MARKERS</code></td>
+</tr>
+<tr>
+<td>Fill the <code>&lt;ANGLE BRACKET&gt;</code> lines</td>
+<td><code>FACTORY_RULES.md</code> — <code>doctor</code> reports the ones you missed</td>
+</tr>
+<tr>
+<td>Write the three files</td>
+<td><code>MISSION.md</code>, <code>END-TO-END.md</code>, <code>HOLDOUT.md</code></td>
+</tr>
+<tr>
+<td>Replace the planning prompt</td>
+<td><code>implement/commands/plan.md</code> — this is your process</td>
+</tr>
+<tr>
+<td>Add your infrastructure paths</td>
+<td><code>guard.py:75</code>, the commented-out <code>PROTECTED +=</code> block</td>
+</tr>
+</tbody>
+</table>
+<p>You do <strong>not</strong> touch: <code>state.py</code>, <code>gate.py</code>, <code>merge.py</code>, <code>guard.py</code>, <code>watchdog.py</code>,
+<code>ledger.py</code>, <code>dispatch.py</code>, <code>ci.py</code>. Those are the machinery, and they are on the
+protected list precisely so nothing edits them casually.</p>
+<h3 id="path-b-rebuild-the-ideas-on-claude-code">Path B — rebuild the ideas on Claude Code</h3>
+<p>The eight properties in <a href="component-map.html#portability-what-archon-supplies">component-map.md</a>
+are the specification. Reproduce those and everything in <code>factory/</code> and <code>harness/</code>
+comes across unchanged — none of it imports Archon.</p>
+<p>The coupling is seven shell-outs to the <code>archon</code> binary, listed in
+<a href="component-map.html#portability-what-archon-supplies">component-map.md</a>. Replace those
+with whatever launches your orchestrated steps, and the state machine, the gate, the
+guard, the merge, the ratchet, the watchdog, the ledger and the harness all still work.</p>
+<p>The four properties that are genuinely hard to get from skills alone:</p>
+<ol>
+<li><strong>Fresh context enforced per step.</strong> A skill you invoke runs in your session, with
+   your session's context. Subagents give you this; skills do not.</li>
+<li><strong>A deny list the node cannot lift.</strong> <code>.claude/settings.json</code> <code>permissions.deny</code>, or
+   a <code>PreToolUse</code> hook. This is what makes the holdout real.</li>
+<li><strong>A worktree per run.</strong> You create it, and you must get <code>ROOT</code> vs <code>SHARED</code> right or
+   the fix loop silently breaks.</li>
+<li><strong>Detached dispatch plus run status and cost.</strong> Without a cost per run the ledger
+   records <code>cost_usd: null</code>, the spend detectors go blind, and <code>spend-blind</code> fires as a
+   permanent warning.</li>
+</ol>
+<h3 id="the-one-thing-to-steal-regardless-of-path">The one thing to steal regardless of path</h3>
+<p>The <strong>holdout + mutation set + ratchet</strong> triad. That is the entire trust argument, and
+none of it is Archon-specific:</p>
+<ul>
+<li>The holdout says: some assertions are outside the builder's optimisation loop.</li>
+<li>The mutation set says: those assertions can actually fail.</li>
+<li>The ratchet says: the count of them cannot fall without a human commit.</li>
+</ul>
+<p>Any one alone is theatre. All three is the reason to merge code nobody read.</p>
+<hr />
+<h2 id="following-cole-week-to-week">Following Cole, week to week</h2>
+<p>74 commits between 2026-08-31 and 2026-09-02 — this repo moves fast, and the commit
+subjects are written as findings rather than as changes ("the import check could not
+fail", "three assumptions that break it on a Mac, all on the first tick").</p>
+<p><strong>The remote layout.</strong> <code>origin</code> is your own private repo. <code>upstream</code> is Cole's, and
+its push URL is deliberately set to a non-repository so <code>git push upstream</code> fails
+loudly. Your commits never travel to him.</p>
+<pre><code class="language-bash">git remote -v
+# origin    https://github.com/az9713/ai-software-factory.git  (fetch/push)
+# upstream  https://github.com/coleam00/ai-software-factory.git (fetch)
+# upstream  DISABLED_never_push_to_cole                         (push)
+</code></pre>
+<p><strong>Cole publishes no releases and no tags.</strong> One branch, <code>main</code>. "His latest" means the
+newest commits on <code>upstream/main</code>, and there is nothing else to track.</p>
+<p><strong>Two commands do the whole job.</strong> Both are git aliases stored in this repo's
+<code>.git/config</code>, so they exist here and nowhere else:</p>
+<pre><code class="language-bash">git whatsnew     # fetch, then list his commits you do not have. Changes nothing.
+git sync         # fetch, merge his work into yours, push to your repo.
+</code></pre>
+<p><code>whatsnew</code> is always safe: it downloads and lists, and touches no file you have.
+Run it, read the subjects, then run <code>sync</code> when you want the changes.</p>
+<p><strong>To read the detail before taking it:</strong></p>
+<pre><code class="language-bash">git log -p main..upstream/main -- docs/incidents.md          # the new incidents, in full
+git log --stat main..upstream/main -- template/factory/ template/harness/
+</code></pre>
+<p>The first is the highest-value command in this repo. Every new incident entry is a new
+rule, and it names the mechanism that now enforces it. <strong>Every new incident entry is
+a new rule, and it names the mechanism that now enforces it.</strong> Read the incident, then
+read the code it points at.</p>
+<p><strong>Which files are volatile, and what a change to each one means:</strong></p>
+<table>
+<thead>
+<tr>
+<th>File</th>
+<th>Grows when</th>
+<th>What a change means for you</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>docs/incidents.md</code></td>
+<td>every incident</td>
+<td>a new failure mode you should check your own version for</td>
+</tr>
+<tr>
+<td><code>template/FACTORY_RULES.md</code></td>
+<td>a rule is added or narrowed</td>
+<td>re-read the section; it is what every workflow reads at run start</td>
+</tr>
+<tr>
+<td><code>template/factory/config.py</code></td>
+<td>almost every fix</td>
+<td>usually a new setting. Diff it against your installed copy.</td>
+</tr>
+<tr>
+<td><code>template/factory/gate.py</code>, <code>merge.py</code></td>
+<td>a hold or a merge path was wrong</td>
+<td>the highest-stakes changes in the repo</td>
+</tr>
+<tr>
+<td><code>template/factory/watchdog.py</code></td>
+<td>a new pathology was seen</td>
+<td>a new detector, or a threshold moved</td>
+</tr>
+<tr>
+<td><code>template/.archon/workflows/**</code></td>
+<td>a node's tools or schema was wrong</td>
+<td>the prompts are yours; the node wiring is Cole's</td>
+</tr>
+</tbody>
+</table>
+<p><strong>If you have already installed it somewhere</strong>, <code>bin/sync-to.py</code> pushes template
+changes into a repo that ran <code>init</code>. Run it with <code>--dry-run</code> first — the runner is
+copied, never linked, so a fix here reaches nothing already built until you push it.</p>
+<pre><code class="language-bash">python bin/sync-to.py ../your-repo --dry-run
+</code></pre>
+<hr />
+<h2 id="two-numbers-to-carry">Two numbers to carry</h2>
+<p><strong>Cost.</strong> One published comparison, on one task: a solo agent produced a
+non-functional result in about twenty minutes for single-digit dollars. A planner /
+generator / evaluator harness where the evaluator drove the live page produced a
+working result in about six hours for roughly twenty times the cost. Twenty times, for
+the only version that worked.</p>
+<p>Instrument your tokens on day one. Projections for this are wrong by 10–20× in the same
+direction every time.</p>
+<p><strong>Failure.</strong> One rejected PR was re-validated 68 times in three and a half hours for
+$17.18, and every individual tick was correct. The ledger and the watchdog exist
+because of that afternoon. Whatever you build, build the thing that remembers the
+sequence.</p>
+<hr />
+<h2 id="what-a-green-gate-never-means">What a green gate never means</h2>
+<p>A green gate never means the product is good. It means the layer a machine can check is
+intact.</p>
+<p><code>MISSION.md</code> has a section for this — <em>what the factory does NOT own</em>. Does it <strong>feel</strong>
+right (weight, pacing, difficulty, tone)? Does it <strong>look</strong> right (layout, hierarchy,
+whether two states read as different)? Is it <strong>understandable</strong> to a first-time user?</p>
+<p>Those are reviewed by a person, on purpose, forever. Write them down, or a green gate
+will quietly start meaning something it never meant.</p>
+</body>
+</html>

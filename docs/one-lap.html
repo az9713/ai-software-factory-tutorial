@@ -1,0 +1,795 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>One lap, traced through the code</title>
+<style>
+  :root {
+    --bg: #0f172a; --card: #1e293b; --text: #e2e8f0; --text-dim: #cbd5e1;
+    --muted: #94a3b8; --accent: #fb923c; --accent2: #2dd4bf;
+    --border: #334155; --code-bg: #1e293b;
+  }
+  body {
+    background: var(--bg); color: var(--text);
+    font-family: -apple-system, Segoe UI, Helvetica, Arial, sans-serif;
+    line-height: 1.6; max-width: 860px; margin: 0 auto; padding: 2.5rem 1.5rem 4rem;
+  }
+  h1, h2, h3, h4 { color: var(--text); line-height: 1.3; }
+  h1 { border-bottom: 1px solid var(--border); padding-bottom: 0.5rem; }
+  h2 { border-bottom: 1px solid var(--border); padding-bottom: 0.3rem; margin-top: 2.5rem; }
+  a { color: var(--accent2); }
+  p, li { color: var(--text-dim); }
+  code { background: var(--code-bg); border: 1px solid var(--border); border-radius: 3px; padding: 0.1em 0.35em; font-size: 0.9em; }
+  pre { background: var(--code-bg); border: 1px solid var(--border); border-radius: 6px; padding: 1rem; overflow-x: auto; }
+  pre code { border: none; padding: 0; background: none; }
+  blockquote { border-left: 3px solid var(--accent); margin-left: 0; padding-left: 1rem; color: var(--muted); }
+  table { border-collapse: collapse; width: 100%; overflow-x: auto; display: block; }
+  th, td { border: 1px solid var(--border); padding: 0.5rem 0.75rem; text-align: left; }
+  th { background: var(--card); }
+  hr { border: none; border-top: 1px solid var(--border); margin: 2rem 0; }
+</style>
+</head>
+<body>
+<h1 id="one-lap-traced-through-the-code">One lap, traced through the code</h1>
+<p>One issue, from filed to merged, naming every file that touches it. Read
+<a href="key-concepts.html">key-concepts.md</a> first.</p>
+<blockquote>
+<p><strong>Tracks:</strong> <code>template/factory/dispatch.py</code>, <code>state.py</code>, <code>gate.py</code>, <code>merge.py</code>,
+<code>guard.py</code>, <code>harness/ci.py</code>, and all five workflow YAMLs under
+<code>template/.archon/workflows/factory/</code>.</p>
+</blockquote>
+<hr />
+<h2 id="the-shape-in-one-picture">The shape, in one picture</h2>
+<pre><code>you file issue #12
+        |
+        v
+   [ tick ]  dispatch.py  -- on a timer, forever
+        |
+        +-- triage      -&gt; factory:accepted + priority:high
+        +-- implement   -&gt; branch factory/implement-issue-12, PR #14, factory:needs-review
+        +-- validate    -&gt; gate.py reads raw markers + judge verdict
+        |                    |
+        |                    +-- green  -&gt; merge.py -&gt; squashed, floor raised
+        |                    +-- held   -&gt; factory:held, waits for you
+        |                    +-- red    -&gt; factory:needs-fix
+        +-- fix         -&gt; addresses findings, hands back to validate (max 2 attempts)
+
+   (weekly, separately)  regress -&gt; runs the gate against main -&gt; files its own issues
+</code></pre>
+<p>Five workflows. One dispatcher. Two decisions made by code that no model can argue
+past: <strong>the gate</strong> and <strong>the merge</strong>.</p>
+<hr />
+<h2 id="step-0-the-tick">Step 0 — The tick</h2>
+<p><code>factory/dispatch.py</code>, <code>main()</code> at line 637. It runs in a fixed order, and the order
+is the design.</p>
+<blockquote>
+<p><strong>Two cadences, and they differ.</strong> <code>factory arm</code> installs a cron / Scheduled Task
+entry at <code>INTERVAL_MINUTES</code> (default <strong>30 minutes</strong>). <code>bash .factory/loop.sh</code> runs a
+tick every <code>FACTORY_LOOP_INTERVAL</code> seconds (default <strong>60</strong>). Both call the same
+<code>dispatch.py</code>, and a tick is idempotent and exits fast when there is nothing to do.
+The loop is for watching it work; the schedule is for leaving it alone.</p>
+</blockquote>
+<p><strong>1. The stop button.</strong> <code>state.stop_requested()</code>. Checked first, before anything else
+is read. Two signals: the <code>.factory/STOP</code> file, and the <code>factory:stop</code> label on any
+open issue. The remote half fails closed — any error reading it counts as stopped. On
+a fresh install with no <code>origin</code> remote yet, this fires, and the log says so
+explicitly rather than telling you to delete a file that does not exist.</p>
+<p><strong>2. The watchdog.</strong> Reads the last 120 minutes from <code>.factory/ledger.jsonl</code>, runs
+<code>watchdog.assess()</code>, and if any finding is HALT it writes <code>.factory/STOP</code> and returns
+0. Nothing dispatches this tick. It logs <code>WATCHDOG_OK events=N findings=0</code> on a clean
+pass — reporting the evidence examined, not just the verdict, because "no findings"
+and "the ledger was unreadable so nothing was examined" would otherwise be the same
+sentence.</p>
+<p><strong>3. Reconcile.</strong> <code>release_settled_locks()</code> then <code>reap_locks()</code>. Then a sweep, on
+every tick, that is not a dispatch:</p>
+<ul>
+<li>Any PR in <code>validating</code> whose lock nobody holds → escalate. A validation died between
+  the tripwire and the verdict.</li>
+<li>Any issue in <code>in-progress</code> with no PR referencing it → escalate. An implement lap
+  died before it opened one.</li>
+</ul>
+<p>This runs unconditionally, before the dial check and before the capacity check,
+because it does not consume the tick's dispatch budget. Doing it as a case in the
+priority order was wrong in a way only running it showed: <code>next_action</code> answers with
+one thing, so a single untriaged issue at a dial below 4 outranked the stall forever.</p>
+<p><strong>4. The dial.</strong> Below level 1, log what it <em>would</em> have run and exit 0.</p>
+<p><strong>5. Concurrency.</strong> If locks held ≥ <code>MAX_PARALLEL</code> (1), log and exit.</p>
+<p><strong>6. Ask, dispatch, repeat.</strong> Call <code>state.next_action(exclude)</code>, act, add the target
+to <code>exclude</code>, ask again until the slots run out.</p>
+<blockquote>
+<p><strong>The dispatcher consults no model.</strong> A model asked "what work is pending?" invents
+dispatches for issues that were never filed. The dumbest component in the system is
+the one where a wrong answer is worse than no answer.</p>
+</blockquote>
+<p><strong>Nothing pushes.</strong> There is no webhook and there is not meant to be one. An issue
+filed at 09:01 waits for the next tick. A push trigger that breaks fails silently and
+looks exactly like a factory with nothing to do; a poll that breaks is a poll you can
+<em>see</em> not running.</p>
+<hr />
+<h2 id="step-0b-the-priority-order">Step 0b — The priority order</h2>
+<p><code>state.next_action()</code>, <code>state.py:476</code>. This function is the entire scheduling policy,
+and its order is load-bearing: <strong>finish in-flight work before starting new work.</strong>
+Reversed, the factory triages forever while its own PRs rot, and throughput looks busy
+while going to zero.</p>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>Returns</th>
+<th>When</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td><code>fix</code></td>
+<td>a PR in <code>failed</code> under the 2-attempt cap</td>
+</tr>
+<tr>
+<td>2</td>
+<td><code>escalate</code></td>
+<td>a PR in <code>failed</code> at the cap</td>
+</tr>
+<tr>
+<td>3</td>
+<td><code>validate</code></td>
+<td>the <strong>oldest</strong> PR in <code>open</code></td>
+</tr>
+<tr>
+<td>4</td>
+<td><code>merge</code></td>
+<td>a PR in <code>passed</code></td>
+</tr>
+<tr>
+<td>5</td>
+<td><code>implement</code></td>
+<td>the highest-priority <code>accepted</code> issue</td>
+</tr>
+<tr>
+<td>6</td>
+<td><code>triage</code></td>
+<td>an <code>untriaged</code> issue not rate-limited</td>
+</tr>
+<tr>
+<td>7</td>
+<td><code>stalled-pr</code></td>
+<td>a PR stuck in <code>validating</code></td>
+</tr>
+<tr>
+<td>8</td>
+<td><code>stalled-issue</code></td>
+<td>an <code>in-progress</code> issue with no PR</td>
+</tr>
+<tr>
+<td>9</td>
+<td><code>idle</code></td>
+<td>nothing to do</td>
+</tr>
+</tbody>
+</table>
+<p>One filter sits between steps 4 and 5 and is easy to miss: <strong>an issue a live PR
+already answers is not work.</strong> <code>accepted</code> is reachable while a PR for that issue is
+open — a human accepting an issue somebody already built, or an issue walked back from
+<code>in-progress</code>. Without the filter the dispatcher opens a second branch for the same
+issue and both try to merge. It happened: PR #13 was held on ratchet slack, and the
+very next tick answered <code>implement gh:issue:12</code> — the issue that PR was for. Only a
+lock that happened to still be held stopped it, which is luck, not a mechanism.</p>
+<hr />
+<h2 id="step-1-triage">Step 1 — Triage</h2>
+<p><strong>Workflow:</strong> <code>factory-triage</code>. Runs <code>--no-worktree</code> (it changes no code). Model tier:
+<code>small</code>. Requires dial ≥ 4.</p>
+<table>
+<thead>
+<tr>
+<th>Node</th>
+<th>Kind</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>resolve</code></td>
+<td>script</td>
+<td>Parses <code>gh:issue:12</code> out of the trigger message. Deterministic, before any model sees anything. <code>$ARGUMENTS</code> reaches the script as an environment variable rather than substituted text — that is the injection guard.</td>
+</tr>
+<tr>
+<td><code>flood</code></td>
+<td>script</td>
+<td><code>flood-check.py</code>. Max 3 issues per UTC day per non-owner author. Excess gets <code>factory:rate-limited</code>, re-evaluated after midnight.</td>
+</tr>
+<tr>
+<td><code>context</code></td>
+<td>script</td>
+<td><code>gather-context.py</code>. Assembles the issue plus <code>MISSION.md</code> and <code>FACTORY_RULES.md</code>.</td>
+</tr>
+<tr>
+<td><code>classify</code></td>
+<td><strong>command</strong></td>
+<td>The model reads the issue against the mission and emits one disposition.</td>
+</tr>
+<tr>
+<td><code>apply</code></td>
+<td>script</td>
+<td><code>apply-triage.py</code> writes the state through <code>factory/state.py</code>.</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p><strong>The model classifies. It does not write state.</strong> A node that could write the state
+directly could write a state the transition table forbids, and then the table is
+decoration.</p>
+</blockquote>
+<p>Four dispositions, and one distinction is load-bearing: <strong><code>deferred</code> is not
+<code>rejected</code>.</strong> An issue rejected as out-of-scope is refused forever, including the
+quarter it lands on the roadmap. <code>deferred</code> means in scope, not now.</p>
+<p>The bias rule is narrower than it sounds. <em>Ambiguous scope</em> — you cannot tell whether
+this is the product's job at all — is a <strong>reject</strong>. <em>Ambiguous detail</em> — clearly in
+scope, some value unspecified — is an <strong>accept</strong>, with the reading you took written
+down. Refusing there is how a queue stops moving while every issue in it is perfectly
+buildable.</p>
+<p><strong>Output:</strong> issue #12 now carries <code>factory:accepted</code> and <code>priority:high</code>.</p>
+<hr />
+<h2 id="step-2-implement">Step 2 — Implement</h2>
+<p><strong>Workflow:</strong> <code>factory-implement</code>, in its own worktree on branch
+<code>factory/implement-issue-12</code>. Requires dial ≥ 1. Eight numbered stages,
+twelve nodes (the extras are <code>resolve</code>, <code>gate-plan</code> and the <code>stop-escalated</code> cancel
+node).</p>
+<h3 id="1-resolve-preflight-scripts">1. <code>resolve</code> + <code>preflight</code> (scripts)</h3>
+<p><code>preflight.py</code> runs everything that must be true before a token is spent, and one
+thing that must be true before anything can commit: <code>git check-ignore</code> over every
+config file that could hold a token. <strong>Empty output means the next run publishes your
+key.</strong> It runs as a node that refuses to start, not as a line in a checklist a human
+reads.</p>
+<p>It also reports <code>prior_attempt</code> — whether this branch already carries commits not on
+the base. A previous lap may have built most of the feature and then been blocked by
+the guard. Those commits are not merged and the issue is not done, but the worktree
+looks as though the feature exists, because it does exist, on a branch nobody took.</p>
+<h3 id="2-prime-command-model-small">2. <code>prime</code> (command, model <code>small</code>)</h3>
+<p>Read-only orientation. Tools: <code>Read, Glob, Grep, Write, Bash</code>, with
+<code>.factory/holdout/**</code> denied for read, glob and grep.</p>
+<p>Its purpose is economic: the plan node is the expensive one, and feeding it a cold
+read of the repository spends a premium model re-deriving what a cheap one could hand
+it.</p>
+<blockquote>
+<p><strong>Why the tool grant is coarse and the leash is the deny list.</strong> Proven by probe, in
+both directions: <code>allowed_tools: ["Bash(python:*)"]</code> grants <strong>nothing</strong> — the node
+has no shell at all. <code>allowed_tools: [Bash]</code> grants a shell.
+<code>denied_tools: ["Bash(git:*)"]</code> genuinely blocks it. The first version scoped the
+grant, and the build nodes ran for weeks with no shell: they could not run the quick
+gate, said so politely in prose, and exited 0.</p>
+</blockquote>
+<h3 id="3-plan-command-model-large-the-premium-slot">3. <code>plan</code> (command, model <code>large</code>) — the premium slot</h3>
+<p><strong>No shell at all.</strong> Tools: <code>Read, Glob, Grep, Write</code>. A plan node that can run things
+plans to measure something itself, gets refused, and the refusal is silent — the
+approval request goes to a human who is not there.</p>
+<p>The prompt is <code>implement/commands/plan.md</code>, 169 lines, and it is explicitly the
+personalisation layer: <em>"Replace it with your own planning step — the one you actually
+read today. What ships here is the shape."</em></p>
+<p>What it must produce, beyond the plan itself:</p>
+<ul>
+<li><strong>Out of scope / non-goals.</strong> Unattended, this is the only thing between a two-file
+  change and a nine-file one — and the guard's 12-file cap rejects the nine-file
+  version outright.</li>
+<li><strong>An executable validation command per task.</strong> Verbatim, as the implement node will
+  type it. Those commands are all it has to go on.</li>
+<li><strong>A test task.</strong> In the project's own test directory, never <code>harness/</code>.</li>
+<li><strong>An observability task.</strong> If the change introduces a value that moves as a
+  consequence of use, exposing it where the harness can see it is <em>part of this
+  change</em>. A value that moves and is not observable cannot be proven to work by
+  anybody — and in a repo that merges without review, that means it cannot be built.
+  This is the one hole only a plan can close; the gate will not catch it.</li>
+</ul>
+<p><strong>Its default is to decide, not to stop.</strong> An unmade decision blocks every issue
+downstream of it; a made decision that turns out wrong is one line and one merge
+click. Product values get chosen and written to <code>ASSUMPTIONS</code>. Judgement values never
+do. The stop list is five items, and <em>"an open question in MISSION"</em> is deliberately
+not one of them.</p>
+<p>There is a measured reason for that. When the plan node was told to stop for "any open
+question", four issues against one product produced four escalations, zero PRs, and
+the same unmade decision reported four separate times — because an open question in a
+spec was read as "you may not propose" when the author meant "I have not decided". The
+more honest the spec, the less the factory could do. One human answer unblocked three
+of them.</p>
+<p>It also reports a confidence score out of 10 for one-pass success. <strong>Below 6, it
+escalates instead</strong> — a plan nobody believes in is cheaper to abandon here than after
+three fix attempts.</p>
+<h3 id="4-gate-plan-script-stop-escalated-cancel-node">4. <code>gate-plan</code> (script) + <code>stop-escalated</code> (cancel node)</h3>
+<p><code>gate-plan.py</code> turns an <code>ESCALATE</code> file into a state change and <strong>cancels the run</strong>,
+rather than letting five more nodes execute against a plan that says "do not build
+this". An explicit escalation file beats a silent no-op.</p>
+<h3 id="5-implement-command-model-medium">5. <code>implement</code> (command, model <code>medium</code>)</h3>
+<p>Tools: <code>Read, Glob, Grep, Edit, Write, Bash</code>, with <code>git</code> and <code>gh</code> denied and the
+holdout denied. <code>idle_timeout: 900000</code> (15 minutes).</p>
+<p>It works the plan task by task, running each task's validation command as it goes.</p>
+<blockquote>
+<p><strong>What stops a builder tuning against the gate is not the tool leash.</strong> It is that
+the validator re-runs everything in a separate process, that every deliberate defect
+must still be caught, and that the ratchet refuses a quieter harness.</p>
+</blockquote>
+<h3 id="6-commit-script">6. <code>commit</code> (script)</h3>
+<p><strong>Without this the whole lap is theatre.</strong> The implement node edits files in the
+worktree, nothing records them, and the worktree is discarded: every node reports OK,
+the guard correctly sees two changed files, and the branch ends up empty. Driving the
+lap by hand hides this, because a human commits without being told to.</p>
+<p>It asserts on the <em>artifact</em> — the SHA and the file count — not on the exit code. A
+node that was denied a tool exits 0 having changed nothing, and "the run succeeded" is
+then true and useless.</p>
+<h3 id="7-guard-script-selfcheck-script-review-command-open-pr-script">7. <code>guard</code> (script) → <code>selfcheck</code> (script) → <code>review</code> (command) → <code>open-pr</code> (script)</h3>
+<ul>
+<li><strong><code>guard</code></strong> runs <code>factory/guard.py</code> against the branch. Protected paths and the caps,
+  before anything else is evaluated.</li>
+<li><strong><code>selfcheck</code></strong> runs the full gate for the builder's benefit. Nothing downstream
+  trusts it. A lap that opens a PR it already knows is red wastes a whole validation
+  cycle to learn that.</li>
+<li><strong><code>review</code></strong> is the only node that reads the diff <em>as code</em> rather than as markers.
+  It writes the PR record; it does not open the PR.</li>
+<li><strong><code>open-pr</code></strong> pushes and opens, from the review node's file. Same rule as the merge:
+  a node holding <code>gh pr create</code> can open a PR against any branch it likes, including
+  one nothing validated.</li>
+</ul>
+<p><strong>Output:</strong> PR #14, labelled <code>factory:needs-review</code>, body containing <code>Fixes #12</code>. That
+keyword is not decoration — <code>state.linked_issue()</code> extracts it, and a PR without it
+cannot be validated at all.</p>
+<hr />
+<h2 id="step-3-validate">Step 3 — Validate</h2>
+<p><strong>Workflow:</strong> <code>factory-validate</code>, own worktree. Requires dial ≥ 2. Six nodes.</p>
+<p>This is where the independence property lives, and it is enforced in six overlapping
+layers because a sentence in a prompt is not enforcement:</p>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>Layer</th>
+<th>Where</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>Separate run, separate worktree, separate context</td>
+<td>Archon <code>--branch</code>, <code>context: fresh</code></td>
+</tr>
+<tr>
+<td>2</td>
+<td>Narrow fetches — the PR without comments, reviews or commit bodies</td>
+<td><code>validate/scripts/prepare.py</code></td>
+</tr>
+<tr>
+<td>3</td>
+<td>Governance read from the <strong>base branch</strong>, before the PR is checked out</td>
+<td><code>prepare.py</code></td>
+</tr>
+<tr>
+<td>4</td>
+<td><strong>No tools on the judge</strong> — <code>allowed_tools: []</code></td>
+<td>the YAML</td>
+</tr>
+<tr>
+<td>5</td>
+<td>A tripwire that fails loudly if a builder artifact is present anyway</td>
+<td><code>factory/tripwire.py</code></td>
+</tr>
+<tr>
+<td>6</td>
+<td><strong>The gate overrides the judge</strong> when raw output and verdict disagree</td>
+<td><code>factory/gate.py</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="prepare-script"><code>prepare</code> (script)</h3>
+<p>Fetches narrowly, reads governance from the base first, rebases if the base moved,
+checks out the branch, trips the wire, and only then moves the PR to <code>validating</code>.
+Everything downstream assumes a validation owns it.</p>
+<h3 id="gate-run-script"><code>gate-run</code> (script)</h3>
+<p>Runs <code>factory/guard.py</code> then <code>FACTORY_VALIDATE_CMD</code> (default <code>python harness/ci.py</code>)
+and writes both into one gate log. <code>PROTECTED_OK</code> is a required marker, which is why
+the guard writes the first lines of that log.</p>
+<p>The guard used here is <strong>this checkout's</strong> guard, run against the branch's tree. A
+branch cut before a guard fix would otherwise run the old, broken guard on itself —
+the same principle as reading governance from the base, applied to the enforcing code
+rather than to the rules it enforces.</p>
+<p>The ladder, in <code>harness/ci.py:190</code> onward:</p>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>Rung</th>
+<th>Marker on success</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td><code>static</code></td>
+<td><code>STATIC_OK</code></td>
+<td>command from <code>harness.config.json</code>; empty → <code>STATIC_SKIPPED</code>, loudly</td>
+</tr>
+<tr>
+<td>2</td>
+<td><code>unit</code></td>
+<td><code>UNIT_PASSED tests=N</code></td>
+<td><strong>zero tests is not a pass.</strong> A suite that discovered nothing exits 0 and looks perfect.</td>
+</tr>
+<tr>
+<td>—</td>
+<td><em>(<code>--quick</code> stops here)</em></td>
+<td><code>GATE_OK mode=quick</code></td>
+<td>the strict subset the builder may run on itself</td>
+</tr>
+<tr>
+<td>3</td>
+<td><code>app-start</code></td>
+<td><code>APP_STARTED</code></td>
+<td>via <code>appproc.py</code>, one of three drivers: <code>http</code>, <code>cli</code>, <code>library</code></td>
+</tr>
+<tr>
+<td>4</td>
+<td><code>e2e</code></td>
+<td><code>E2E_PASSED journeys=N steps=M</code></td>
+<td>an agent drives <code>harness/END-TO-END.md</code> against the running app</td>
+</tr>
+<tr>
+<td>5</td>
+<td><code>holdout</code></td>
+<td><code>HOLDOUT_PASSED scenarios=N assertions=M</code></td>
+<td>absent → <code>HOLDOUT_ABSENT</code>, and the log says nothing above the independence line ran</td>
+</tr>
+<tr>
+<td>6</td>
+<td><code>mutations</code></td>
+<td><code>MUTATIONS_TOTAL / _CAUGHT / _NOT_INJECTED</code></td>
+<td>skipped inside a mutation build, or 6 defects becomes 36 gate runs</td>
+</tr>
+<tr>
+<td>—</td>
+<td>done</td>
+<td><code>GATE_OK mode=full</code></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<p>The app is torn down in a <code>finally</code> on every path including failure, or a leaked
+process holds the port and poisons the next lap.</p>
+<h3 id="brief-script-the-most-instructive-bug-in-the-build"><code>brief</code> (script) — the most instructive bug in the build</h3>
+<p><code>brief.py</code> composes everything the judge may see into one document and <strong>substitutes it
+into the prompt</strong>.</p>
+<p>The judge runs with <code>allowed_tools: []</code>. That is the mechanism. The prompt originally
+told it to <em>"read these from <code>$ARTIFACTS_DIR</code>"</em> — files it had no tool to open. It did
+exactly the right thing: it refused to fabricate a judgment, said its inputs were
+missing, and returned <code>reject</code>. Correct behaviour, and a rejected pull request, because
+the prompt asked a node to do something the node could not do.</p>
+<p>What goes in, and the omissions are the point:</p>
+<table>
+<thead>
+<tr>
+<th>In</th>
+<th>Not in</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>the issue, as filed — the contract</td>
+<td>the implementation plan</td>
+</tr>
+<tr>
+<td>the diff, against the <strong>merge base</strong></td>
+<td>the implementation report</td>
+</tr>
+<tr>
+<td>the commit <strong>subjects</strong> only</td>
+<td>the priming document</td>
+</tr>
+<tr>
+<td>the gate log, verbatim</td>
+<td>any comment on the PR, including the judge's own from a previous round</td>
+</tr>
+<tr>
+<td>governance from the <strong>base branch</strong></td>
+<td>commit bodies — a commit body is the coder's story</td>
+</tr>
+</tbody>
+</table>
+<p>Truncation is declared, never silent. A diff clipped without saying so is a judge
+reasoning about a file it thinks it read to the end.</p>
+<h3 id="judge-command-context-fresh-allowed_tools"><code>judge</code> (command, <code>context: fresh</code>, <code>allowed_tools: []</code>)</h3>
+<p>One question: <em>does this diff solve the issue as it was filed?</em> Not style, not
+architecture. Output is a JSON object; only <code>verdict</code> and <code>summary</code> are required.</p>
+<blockquote>
+<p><strong>The schema constrains only what is branched on.</strong> <code>gate.py</code> reads exactly one
+field to decide anything: <code>verdict</code>. Every enum on a field nobody branches on is a
+fresh chance per finding to fail the whole run over a synonym — eight of them on a
+five-finding review. This node once died five times on
+<code>error_max_structured_output_retries</code> and took the run with it.</p>
+</blockquote>
+<p>One YAML gotcha worth stealing: <code>enum: ["yes", "partially", "no"]</code> is quoted because
+<strong>YAML 1.1 parses bare <code>yes</code> and <code>no</code> as booleans</strong>. Unquoted, the enum loaded as
+<code>[True, "partially", False]</code> — a schema demanding a boolean for a field declared
+<code>type: string</code>. The judge produced something satisfying the contradiction and said
+nothing useful: summary "test", one finding "test issue", after two and a half minutes
+of real work. Nothing errored anywhere.</p>
+<p><strong>The judge can only ever add a reason to block.</strong> If the markers say red and it thinks
+green, either it is wrong or the harness is, and either way that is a human's call.</p>
+<h3 id="apply-script-factorygatepy"><code>apply</code> (script) → <code>factory/gate.py</code></h3>
+<p><code>gate.py:229</code> is the decision. In order:</p>
+<ol>
+<li><strong>Precondition.</strong> The PR must be in <code>validating</code>. Reaching the gate from another
+   state means the independent validation was skipped. Exit 2, <code>GATE_REFUSED</code>.</li>
+<li><strong>Empty is not pass.</strong> An empty gate log fails outright.</li>
+<li><strong>Which rung stopped it.</strong> Reads the last <code>GATE_FAILED: &lt;rung&gt;</code> and names it. The
+   marker assertions below run in a fixed order, not run order, so without this a
+   suite that died early is reported as "APP_STARTED absent" — true, and four steps
+   downstream of the cause.</li>
+<li><strong>Markers.</strong> Every <code>REQUIRED_MARKER</code> must appear. Missing <strong>and</strong> nothing reported
+   a failure = the gate did not run, which is a human's problem. Missing <strong>after</strong> a
+   named red rung = an ordinary failure, and goes round the fix loop.</li>
+<li><strong>Counts against the ratchet.</strong> Observed &lt; floor is a blocker. A floor key with no
+   count in the log fails loudly, because a floor nothing measures is a floor nobody is
+   held to.</li>
+<li><strong>Mutations.</strong> <code>caught</code> must equal <code>total</code>, and <code>total</code> must not be 0. A defect that
+   could not be injected (an anchor moved) is a blocker, not a pass — a mutation set
+   that silently stops injecting reports a perfect score for doing nothing.</li>
+<li><strong>What holds the merge without failing the run:</strong> a rise in <code>UNCALIBRATED_MAX</code>, or a
+   recorded <code>ASSUMPTIONS</code> file. (Ratchet slack used to hold too; <code>SLACK_CAPS_AUTONOMY</code>
+   now defaults to false — see below.)</li>
+<li><strong>The verdict.</strong> Missing or unparseable = fail. <strong>If blockers exist and the judge
+   said <code>approve</code>, override to <code>request_changes</code></strong> and print <code>GATE_OVERRIDE</code>. The
+   override is one-way: it can only add a reason to block.</li>
+</ol>
+<p>Then one of four endings:</p>
+<table>
+<thead>
+<tr>
+<th>Verdict</th>
+<th>State written</th>
+<th>Exit</th>
+<th>What happens</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>approve, nothing held</td>
+<td><code>passed</code></td>
+<td>0</td>
+<td>counts saved, <code>merge.py</code> called with them in <code>FACTORY_OBSERVED_COUNTS</code></td>
+</tr>
+<tr>
+<td>approve, something held</td>
+<td><strong><code>held</code></strong></td>
+<td>0</td>
+<td>a PR comment explains the hold; the factory carries on with other work</td>
+</tr>
+<tr>
+<td>request_changes</td>
+<td><code>failed</code></td>
+<td>3</td>
+<td>findings + gate log written to <code>.factory/findings/&lt;target&gt;.json</code></td>
+</tr>
+<tr>
+<td>reject</td>
+<td><code>rejected</code></td>
+<td>3</td>
+<td>comment posted</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p><strong><code>held</code>, not <code>passed</code>.</strong> The hold used to be a sentence: the gate printed "merge
+HELD", set the PR to <code>passed</code>, and the dispatcher merged it forty-five seconds later
+— because <code>passed</code> is what a mergeable PR is called, and the dispatcher reads states,
+not prose. The most subtle gate in the system was defeated by the most obvious one,
+and it looked exactly like a clean unattended lap.</p>
+</blockquote>
+<p>Findings are copied to <code>SHARED</code>, keyed by target. The fix workflow is a separate
+process started later; it cannot name a run directory. A fix node with nothing to read
+does not crash — it fixes from memory of the diff, so every attempt is a guess at what
+the validator wanted.</p>
+<hr />
+<h2 id="step-4-merge">Step 4 — Merge</h2>
+<p><code>factory/merge.py:208</code>. Requires dial ≥ 3. Called two ways: by <code>gate.py</code> at the end of
+a green validation, or by the dispatcher when it finds a PR already in <code>passed</code>.</p>
+<p><strong>It re-checks everything itself.</strong> It does not trust that <code>gate.py</code> already did, and
+it does not trust the verdict file at all:</p>
+<ol>
+<li>Target is a PR, state is <code>passed</code>, head branch exists.</li>
+<li><code>guard.main()</code> again, against <code>origin/BASE..origin/branch</code>.</li>
+<li><code>git merge-base --is-ancestor base head</code> — the branch must contain the base, or the
+   squash silently drops whatever landed while it was in flight.</li>
+<li>GitHub's own view, re-read: <code>state</code>, <code>mergeable</code>, <code>isDraft</code>, <code>baseRefName</code>,
+   <code>mergeStateStatus</code>.</li>
+<li><code>gh pr merge --squash</code>.</li>
+<li><code>raise_floor()</code> — writes each floor up to the count the gate observed on the tree
+   that just landed. Monotonic, existing keys only, never a <code>_MAX</code>.</li>
+</ol>
+<p>Three exit codes, and the split matters:</p>
+<table>
+<thead>
+<tr>
+<th>Code</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>0</td>
+<td>merged</td>
+</tr>
+<tr>
+<td>1</td>
+<td>refused, needs a human</td>
+</tr>
+<tr>
+<td><strong>2</strong></td>
+<td>refused, <strong>already handled</strong> — the branch was behind base, so the PR was requeued to <code>open</code> for a fresh validation</td>
+</tr>
+</tbody>
+</table>
+<p>Without the split, the dispatcher escalated every refusal including the one merge.py
+had just recovered from. The PR went back to <code>open</code> and then straight to
+<code>needs-human</code> one line later — terminal for nodes. A recovery that undid itself.</p>
+<p>Two distinctions worth stealing:</p>
+<ul>
+<li><strong><code>mergeable</code> and <code>mergeStateStatus</code> are different questions.</strong> A PR on a protected
+  branch reports <code>mergeable=MERGEABLE</code> (no conflict) and <code>mergeStateStatus=BLOCKED</code> (a
+  required review has not happened). Checking only the first sails past every pre-check
+  and fails at the merge with a generic error, which is true and useless.</li>
+<li><strong>Empty or <code>UNKNOWN</code> merge state is not "fine".</strong> GitHub computes it asynchronously.
+  Refuse, and let the next tick ask again.</li>
+</ul>
+<blockquote>
+<p><strong>Why branch protection does not replace this file.</strong> The tempting move is to delete
+<code>merge.py</code> and let a required check plus a ruleset be the gate. It fails in the case
+that matters: the factory authenticates as a principal that administers the
+repository, and an account that can edit a ruleset can bypass one. Branch protection
+is a good second lock and a bad only lock.</p>
+</blockquote>
+<p>After a successful merge the dispatcher runs <code>factory/deploy.py</code> and <strong>checks its
+result</strong>. A deploy that failed after a successful merge used to be completely silent.
+It does not escalate the PR — the merge succeeded and the code is on main; the real
+problem is an undeployed main, and marking a merged PR <code>needs-human</code> sends a person to
+look at something already done.</p>
+<hr />
+<h2 id="step-5-fix-if-the-gate-went-red">Step 5 — Fix, if the gate went red</h2>
+<p><strong>Workflow:</strong> <code>factory-fix</code>, own worktree, four nodes: <code>resolve</code> → <code>prepare</code> → <code>fix</code> →
+<code>land</code>. Attempt cap: 2.</p>
+<p><code>prepare-fix.py</code> reads <code>.factory/findings/&lt;target&gt;.json</code>. <code>land-fix.py</code> sets the PR
+back to state <code>open</code> (label <code>factory:needs-review</code>), so the next tick hands it to a
+fresh validation.</p>
+<blockquote>
+<p><strong>A fix is never self-certified.</strong> The node that made the change does not get to
+decide the change worked. This is why <code>fix</code> is a separate workflow rather than a loop
+inside <code>validate</code>: a fix running in the same process as the judgement it answers can
+inherit the judge's reasoning, and the next validation would be judging a tree built
+with its own previous opinion in context.</p>
+</blockquote>
+<p>At attempt 3, <code>next_action</code> returns <code>escalate</code> instead.</p>
+<hr />
+<h2 id="step-6-regression-weekly">Step 6 — Regression, weekly</h2>
+<p><strong>Workflow:</strong> <code>factory-regress</code>. Cron <code>0 6 * * 1</code>. Four nodes: <code>sync</code> → <code>suite</code> →
+<code>diagnose</code> → <code>file-issues</code>.</p>
+<p>It is dispatched by <code>factory/regress-trigger.py</code>, not by the tick — there is no
+<code>regress</code> key in <code>REQUIRES_LEVEL</code> (<code>dispatch.py:59</code>). Folding it into the dispatcher's
+priority order would let a busy queue silently starve the one check that looks at main.</p>
+<p><strong>It runs at any dial level. It only FILES issues at level 4 or above.</strong> Below that it
+still runs the full gate against main and reports, because an issue queue that fills
+itself before anyone has watched a full cycle is a queue nobody trusts.</p>
+<p>It runs the full gate against <code>main</code> and files an issue for anything broken. That
+closes the loop:</p>
+<pre><code>regression finds a break in merged code -&gt; files an issue with evidence
+    -&gt; triage accepts it -&gt; implement opens a PR -&gt; validate judges it -&gt; merge
+</code></pre>
+<p>No human anywhere unless all of that fails.</p>
+<p>Per-PR validation only ever sees one branch. The failures it cannot see are the ones
+needing two merges to appear: two changes individually correct and wrong together, an
+assumption one PR made that the next quietly broke, anything showing up only on a cold
+start.</p>
+<p><strong>Unlike the validator, this is not bound by the holdout</strong> — it runs against
+already-merged code, so there is nothing to hold out from.</p>
+<p><strong>It never files an issue it cannot prove.</strong> If the harness itself failed to run — a
+missing dependency, a port collision, an incomplete checkout — it reports that and
+files nothing. A factory that spams its own backlog with bogus product bugs when it
+cannot prove its own test harness ran is worse than one that stayed quiet.</p>
+<hr />
+<h2 id="where-state-lives-during-a-lap">Where state lives during a lap</h2>
+<table>
+<thead>
+<tr>
+<th>Path</th>
+<th>Root</th>
+<th>Lifetime</th>
+<th>Holds</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>GitHub labels</td>
+<td>—</td>
+<td>forever</td>
+<td>the state machine, and the audit trail</td>
+</tr>
+<tr>
+<td><code>.factory/locks-runtime/*.lock</code></td>
+<td><code>SHARED</code></td>
+<td>one dispatch</td>
+<td>the per-(action, target) mutex, plus the engine's run id</td>
+</tr>
+<tr>
+<td><code>.factory/runs/*.log</code></td>
+<td><code>SHARED</code></td>
+<td>until pruned</td>
+<td>raw engine output per dispatch</td>
+</tr>
+<tr>
+<td><code>.factory/ledger.jsonl</code></td>
+<td><code>SHARED</code></td>
+<td>forever, append-only</td>
+<td>dispatch / settle / escalate events — what the watchdog reads</td>
+</tr>
+<tr>
+<td><code>.factory/findings/&lt;t&gt;.json</code></td>
+<td><code>SHARED</code></td>
+<td>until the next validation</td>
+<td>what the validator objected to, for the fix node</td>
+</tr>
+<tr>
+<td><code>.factory/findings/&lt;t&gt;.counts.json</code></td>
+<td><code>SHARED</code></td>
+<td>until merged</td>
+<td>observed counts, so a dispatcher-side merge can still raise the floor</td>
+</tr>
+<tr>
+<td><code>.factory/assumptions/&lt;t&gt;.txt</code></td>
+<td><code>SHARED</code></td>
+<td>until a human clears it</td>
+<td>product values the plan chose</td>
+</tr>
+<tr>
+<td><code>.factory/needs-human.md</code></td>
+<td><code>SHARED</code></td>
+<td>forever</td>
+<td>every escalation, appended</td>
+</tr>
+<tr>
+<td><code>.factory/decisions.md</code></td>
+<td><code>SHARED</code></td>
+<td>forever</td>
+<td>answered questions. <strong>A decision is asked once.</strong></td>
+</tr>
+<tr>
+<td><code>.factory/locks/floor.json</code></td>
+<td><code>ROOT</code></td>
+<td>in git, protected</td>
+<td>the ratchet</td>
+</tr>
+<tr>
+<td><code>.factory/holdout/HOLDOUT.md</code></td>
+<td><code>ROOT</code></td>
+<td>in git, protected + read-denied</td>
+<td>the assertions above the independence line</td>
+</tr>
+<tr>
+<td><code>$ARTIFACTS_DIR/</code></td>
+<td>worktree</td>
+<td>one run</td>
+<td>plan, priming, issue, ASSUMPTIONS, ESCALATE, FOLLOWUP</td>
+</tr>
+</tbody>
+</table>
+<p>The <code>ROOT</code> / <code>SHARED</code> split is the one to get right. See
+<a href="key-concepts.html#memory-and-safety">key-concepts.md</a>.</p>
+<hr />
+<h2 id="running-a-lap-by-hand">Running a lap by hand</h2>
+<p>At level 0, nothing dispatches. Everything still runs:</p>
+<pre><code class="language-bash">factory run implement gh:issue:1
+factory run validate gh:pr:2
+python factory/state.py next        # what the dispatcher would pick
+python factory/dispatch.py --dry-run
+python factory/doctor.py
+</code></pre>
+<p>Read the plan it wrote, the PR body, and the judge's verdict. Then merge that first PR
+yourself, whatever the gate says. You are not testing the merge yet; you are reading
+the work.</p>
+</body>
+</html>

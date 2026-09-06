@@ -1,0 +1,388 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>Key concepts</title>
+<style>
+  :root {
+    --bg: #0f172a; --card: #1e293b; --text: #e2e8f0; --text-dim: #cbd5e1;
+    --muted: #94a3b8; --accent: #fb923c; --accent2: #2dd4bf;
+    --border: #334155; --code-bg: #1e293b;
+  }
+  body {
+    background: var(--bg); color: var(--text);
+    font-family: -apple-system, Segoe UI, Helvetica, Arial, sans-serif;
+    line-height: 1.6; max-width: 860px; margin: 0 auto; padding: 2.5rem 1.5rem 4rem;
+  }
+  h1, h2, h3, h4 { color: var(--text); line-height: 1.3; }
+  h1 { border-bottom: 1px solid var(--border); padding-bottom: 0.5rem; }
+  h2 { border-bottom: 1px solid var(--border); padding-bottom: 0.3rem; margin-top: 2.5rem; }
+  a { color: var(--accent2); }
+  p, li { color: var(--text-dim); }
+  code { background: var(--code-bg); border: 1px solid var(--border); border-radius: 3px; padding: 0.1em 0.35em; font-size: 0.9em; }
+  pre { background: var(--code-bg); border: 1px solid var(--border); border-radius: 6px; padding: 1rem; overflow-x: auto; }
+  pre code { border: none; padding: 0; background: none; }
+  blockquote { border-left: 3px solid var(--accent); margin-left: 0; padding-left: 1rem; color: var(--muted); }
+  table { border-collapse: collapse; width: 100%; overflow-x: auto; display: block; }
+  th, td { border: 1px solid var(--border); padding: 0.5rem 0.75rem; text-align: left; }
+  th { background: var(--card); }
+  hr { border: none; border-top: 1px solid var(--border); margin: 2rem 0; }
+</style>
+</head>
+<body>
+<h1 id="key-concepts">Key concepts</h1>
+<p>Every term the factory uses, defined once, with the file that enforces it.</p>
+<blockquote>
+<p><strong>Tracks:</strong> <code>template/factory/state.py</code>, <code>config.py</code>, <code>guard.py</code>, <code>gate.py</code>,
+<code>watchdog.py</code>, <code>harness/ci.py</code>. Re-read after any commit touching those.</p>
+</blockquote>
+<hr />
+<h2 id="the-shape-of-the-thing">The shape of the thing</h2>
+<p><strong>Factory</strong> — a repository that turns its own issues into merged code without a human
+reading the diff. Cole also calls it a <em>dark factory</em>, after lights-out manufacturing.</p>
+<p><strong>Lap</strong> — one complete pass of work through the factory: issue filed → triaged →
+built → judged → merged. Traced end to end in <a href="one-lap.html">one-lap.md</a>.</p>
+<p><strong>Tick</strong> — one run of <code>factory/dispatch.py</code>. It reads the state, picks at most one
+piece of work, hands it to the engine, and exits. A tick never waits for the work it
+started. Default interval: 30 minutes (<code>INTERVAL_MINUTES</code>, <code>config.py</code>).</p>
+<p><strong>Dial / autonomy level</strong> — an integer 0–5 saying how much runs without you.
+Enforced in code at <code>template/factory/dispatch.py:59</code> (<code>REQUIRES_LEVEL</code>), not in a
+document.</p>
+<table>
+<thead>
+<tr>
+<th>Level</th>
+<th>What becomes automatic</th>
+<th>Action it unlocks</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>0</td>
+<td>Nothing. Workflows exist; you run them by hand.</td>
+<td>—</td>
+</tr>
+<tr>
+<td>1</td>
+<td>An accepted issue becomes a branch and a PR</td>
+<td><code>implement</code>, <code>fix</code></td>
+</tr>
+<tr>
+<td>2</td>
+<td>The validator runs and writes a verdict</td>
+<td><code>validate</code></td>
+</tr>
+<tr>
+<td>3</td>
+<td><strong>It merges.</strong> Nobody reads the diff.</td>
+<td><code>merge</code></td>
+</tr>
+<tr>
+<td>4</td>
+<td>It triages its own issues; the weekly regression files its own bugs</td>
+<td><code>triage</code></td>
+</tr>
+<tr>
+<td>5</td>
+<td>It writes its own issues from the mission</td>
+<td>—</td>
+</tr>
+</tbody>
+</table>
+<p>Level 3 is the destination. A factory that stops at 2 is a code generator with a
+queue, and you are still the bottleneck. <code>factory doctor</code> refuses to raise the dial
+past what the evidence supports.</p>
+<p><strong>Target</strong> — one unit of work, named as a string: <code>gh:issue:12</code> or <code>gh:pr:14</code>. Parsed
+by <code>state.parse_target()</code>. Every script in the system takes one.</p>
+<hr />
+<h2 id="state">State</h2>
+<p><strong>Label as state</strong> — the factory has no database. The <code>factory:*</code> labels on a GitHub
+issue or PR <em>are</em> its state. Labels are visible, editable from a phone, already backed
+up, and they are the audit trail (<code>state.py</code>, module docstring).</p>
+<p><strong>Transition table</strong> — <code>template/factory/state.py:88</code>, <code>TRANSITIONS</code>. The one legality
+table. Any move not on it is refused with <code>IllegalTransition</code>. A node that wants a
+forbidden move has misunderstood something, and inventing the transition would bury
+the misunderstanding.</p>
+<p><strong>Issue states</strong> (<code>state.py:60</code>): <code>untriaged</code>, <code>accepted</code>, <code>deferred</code>, <code>rejected</code>,
+<code>in-progress</code>, <code>needs-human</code>, <code>done</code>.</p>
+<p><strong>PR states</strong> (<code>state.py:85</code>): <code>open</code>, <code>validating</code>, <code>passed</code>, <code>failed</code>, <code>rejected</code>,
+<code>merged</code>, <code>needs-human</code>, <code>held</code>.</p>
+<p>Three PR states are easy to confuse, and the difference is the whole safety design:</p>
+<table>
+<thead>
+<tr>
+<th>State</th>
+<th>Label</th>
+<th>Means</th>
+<th>Who moves it out</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>failed</code></td>
+<td><code>factory:needs-fix</code></td>
+<td>A check went red. Under the attempt cap.</td>
+<td>The fix workflow, automatically</td>
+</tr>
+<tr>
+<td><code>held</code></td>
+<td><code>factory:held</code></td>
+<td>Everything is green. The factory made a call it wants agreed with. <strong>Not a failure.</strong></td>
+<td>A human, via <code>factory accept</code></td>
+</tr>
+<tr>
+<td><code>needs-human</code></td>
+<td><code>factory:needs-human</code></td>
+<td>Stopped. <code>TRANSITIONS["needs-human"]</code> is the empty set.</td>
+<td>A human, by removing the label</td>
+</tr>
+</tbody>
+</table>
+<p><strong><code>closed-unlabelled</code></strong> — a real state, not a bug. GitHub closes an issue itself when
+a merged PR says <code>Closes #N</code>, a transition the table never authorised. Treated like
+<code>untriaged</code>: something you arrive in from outside.</p>
+<p><strong>Lock</strong> — a file in <code>.factory/locks-runtime/</code>, one per <code>(action, target)</code> pair.
+Labels are good shared state and a bad mutex: there is no compare-and-swap, so two
+readers of <code>factory:accepted</code> both claim the issue. The lock is the mutex
+(<code>dispatch.py</code>, <code>acquire()</code>). It is released when the engine reports the run settled,
+reaped when its recorded PID is gone plus 5 minutes of grace, or aged out after 180
+minutes.</p>
+<hr />
+<h2 id="the-checks">The checks</h2>
+<p><strong>Gate</strong> — the whole validation ladder, and specifically <code>factory/gate.py</code>, which
+reads the raw run log plus the judge's verdict and decides what happens. When the two
+disagree, <strong>the raw output wins</strong> (<code>gate.py:229</code> onward).</p>
+<p><strong>Guard</strong> — <code>factory/guard.py</code>. Protected paths, the size caps, the file cap. Runs
+<em>before</em> anything else, so a change that can edit the rulebook is never judged against
+the edited rulebook. Exit 2 means "could not compute the diff", which is a failure,
+not a pass.</p>
+<p><strong>Rung</strong> — one step of the ladder in <code>harness/ci.py</code>. In order: <code>static</code> → <code>unit</code> →
+<code>app-start</code> → <code>e2e</code> → <code>holdout</code> → <code>mutations</code>. The ladder stops at the first red rung
+and names it (<code>GATE_FAILED: &lt;rung&gt;</code>).</p>
+<p><strong>Marker</strong> — a positive string a rung prints to prove it ran. <code>APP_STARTED</code>,
+<code>E2E_PASSED journeys=2 steps=9</code>, <code>HOLDOUT_PASSED scenarios=2</code>, <code>MUTATIONS_CAUGHT=7</code>,
+<code>PROTECTED_OK</code>, <code>GATE_OK</code>. Named in <code>config.REQUIRED_MARKERS</code>, not hardcoded in the
+checks — a repo whose harness emits <code>PLAYTHROUGH_PASSED</code> sets that instead.</p>
+<p><strong>Empty is not pass</strong> — the design rule behind markers. A check that never ran
+produces no failures, and code asking "did anything fail?" reads that as success. So
+nothing ever asks that. It asks "did this specific thing report that it ran?"</p>
+<p><strong>Ratchet / floor</strong> — <code>.factory/locks/floor.json</code>. A minimum count per marker:
+<code>e2e_journeys</code>, <code>holdout_scenarios</code>, <code>unit_tests</code>. The gate asserts observed ≥ floor.
+The file is protected, so "delete the check and lower the number in the same commit"
+is not available to the factory.</p>
+<p><strong>Slack</strong> — the gap between observed and floor. It is exactly how many assertions
+could be deleted with the gate still green. It used to grow whenever the harness
+improved, because only a human could raise a protected file — measured on a real
+factory, from 7 to 33 in one cycle <em>because the harness got better</em>. <code>merge.py:97</code>
+(<code>raise_floor</code>) now closes it on every merge: monotonic, existing keys only, never a
+<code>_MAX</code> ceiling.</p>
+<p><strong><code>UNCALIBRATED_MAX</code></strong> — a ceiling, not a floor, in the same file. Check counts may
+not fall; the number of margins nobody has chosen a threshold for may not rise. A PR
+that introduces a threshold nobody set holds the merge.</p>
+<p><strong>Mutation set</strong> — <code>harness/mutations/defects.json</code>. Six to ten deliberate defects
+injected into real source on a throwaway copy. Each must make the gate go red. It is
+the only thing in the gate that measures your <em>harness</em> rather than your <em>code</em>. Every
+other check asks "is this build good?"; this asks "would this gate know if it were
+not?"</p>
+<p><strong>Holdout</strong> — <code>.factory/holdout/HOLDOUT.md</code>. Scenarios the builder is blocked from
+<strong>reading</strong>, not merely from editing. Everything in <code>harness/</code> sits inside the
+builder's optimisation loop: it can read those checks and iterate until they are
+green, and given enough attempts it will. The holdout is different only because the
+builder never sees it. That is the only honest reason to merge code nobody reviewed.</p>
+<p><strong>Independence line</strong> — the boundary the holdout draws. Above it, checks the builder
+cannot see. Below it, everything else.</p>
+<p><strong>Tripwire</strong> — <code>factory/tripwire.py</code>. Fails loudly if a builder artifact (a plan, an
+implementation report) is present in the validator's working directory. It should be
+impossible. It is checked anyway, because that failure is silent by construction: the
+validator keeps producing confident verdicts and every one is contaminated.</p>
+<hr />
+<h2 id="the-two-kinds-of-value">The two kinds of value</h2>
+<p>The distinction the whole safety argument rests on (<code>FACTORY_RULES.md</code> §7.1).</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>Examples</th>
+<th>May the factory choose it?</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Judgement value</strong> — what counts as passing</td>
+<td>a floor, a tolerance, a sample size, a deliberate defect, a required marker</td>
+<td><strong>Never.</strong> Choosing one is tuning the judge.</td>
+</tr>
+<tr>
+<td><strong>Product value</strong> — what the software does</td>
+<td>a price, a rate, a default, a name, a layout</td>
+<td><strong>Yes.</strong> Choose it, record it in <code>ASSUMPTIONS</code>, and the merge is held for a human.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Assumption</strong> — a product value the plan node chose rather than stopped for. Written
+to <code>$ARTIFACTS_DIR/ASSUMPTIONS</code> as <code>NAME=value | WHY: ... CHANGE IF: ...</code>. It holds
+the merge without failing the run. The human then answers a concrete question about a
+built, validated thing instead of an abstract one in the dark.</p>
+<p><strong>Escalation</strong> — <code>factory:needs-human</code> plus a ledger line plus a notification. All
+three, or it is not an escalation (<code>dispatch.escalate()</code>). The stop list is
+deliberately short: seven items, <code>FACTORY_RULES.md</code> §7.2.</p>
+<hr />
+<h2 id="memory-and-safety">Memory and safety</h2>
+<p><strong>Ledger</strong> — <code>.factory/ledger.jsonl</code>. One append-only line per event: <code>dispatch</code>,
+<code>settle</code>, <code>escalate</code>. Deliberately dumb, with no analysis in it. It exists because a
+tick is stateless by design, and <strong>a process with no memory of its own actions cannot
+notice it is repeating itself</strong>. On 2026-09-01 one rejected PR was re-validated 68
+times in three and a half hours for $17.18. Every individual tick was correct; the
+pathology lived entirely in the sequence, and nothing was writing the sequence down.</p>
+<p><strong>Watchdog</strong> — <code>factory/watchdog.py</code>. Reads the ledger and halts the factory when the
+history looks pathological. <code>assess()</code> at line 140 is a pure function of an event list
+and a clock, which is what makes every detector testable with a synthetic history.
+Seven detectors — <code>python factory/watchdog.py --explain</code> prints this list live:</p>
+<table>
+<thead>
+<tr>
+<th>Detector</th>
+<th>Fires when</th>
+<th>Severity</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>repeat-dispatch</code></td>
+<td>the same (action, target) dispatched ≥3× in 120 min with zero completions, <strong>or</strong> ≥6× regardless</td>
+<td>HALT</td>
+</tr>
+<tr>
+<td><code>escalation-ignored</code></td>
+<td>a target was escalated and then dispatched again</td>
+<td>HALT</td>
+</tr>
+<tr>
+<td><code>all-failing</code></td>
+<td>the last 5 settled runs all ended badly, none completed</td>
+<td>HALT</td>
+</tr>
+<tr>
+<td><code>no-progress</code></td>
+<td>≥8 dispatches in the window, zero completions</td>
+<td>HALT</td>
+</tr>
+<tr>
+<td><code>spend-cap</code></td>
+<td>≥$25 in the window</td>
+<td>HALT</td>
+</tr>
+<tr>
+<td><code>spend-without-progress</code></td>
+<td>≥$8 with nothing completing</td>
+<td>HALT</td>
+</tr>
+<tr>
+<td><code>spend-blind</code></td>
+<td>fewer than half of settled runs carry a cost</td>
+<td>WARN</td>
+</tr>
+</tbody>
+</table>
+<p>A HALT writes <code>.factory/STOP</code> and notifies. It does not warn and hope — a warning is
+what the escalation already was, and the machine drove through it.</p>
+<p>One status is deliberately treated as <em>no evidence</em> rather than as failure:
+<code>not_found</code> (<code>watchdog.py:124</code>). Archon reports a window of 20 runs and prunes beyond
+it, so a busy hour ages runs out routinely. Counting those as failures halted a
+healthy factory within an hour of the watchdog going live, while three PRs were
+merging.</p>
+<p><strong>Stop button</strong> — two of them, because they fail in different places.
+<code>.factory/STOP</code> works with the network down. The <code>factory:stop</code> label on any open
+issue is reachable from a phone. <strong>The remote half fails closed:</strong> any error reading
+it counts as stopped.</p>
+<p><strong><code>ROOT</code> vs <code>SHARED</code></strong> (<code>config.py</code>) — the distinction that quietly breaks everything
+if you get it wrong.</p>
+<ul>
+<li><code>ROOT</code> = the git top level of <em>this checkout</em>, which is the worktree when a node
+  runs in one. Code under test reads from here.</li>
+<li><code>SHARED</code> = the main checkout, found via <code>git rev-parse --git-common-dir</code>. Runtime
+  state that must outlive the worktree lives here: <code>.factory/runs</code>, the locks, the
+  findings, the needs-human ledger, recorded assumptions.</li>
+</ul>
+<p>Get it wrong and the fix loop breaks silently: the validator records what it objected
+to, the worktree is deleted, and the fix node — a separate run, later — finds nothing.
+It does not crash. It re-reads the diff and invents an objection, so every fix attempt
+becomes a guess at what the validator wanted.</p>
+<hr />
+<h2 id="engine-terms">Engine terms</h2>
+<p><strong>Archon</strong> — Cole's workflow engine (<code>github.com/coleam00/archon</code>). <code>factory init</code>
+installs it if it is not already present. It runs a YAML workflow as a graph of nodes,
+each in a fresh model session, optionally in its own git worktree.</p>
+<p><strong>Node</strong> — one step in a workflow. Two kinds: a <code>command:</code> node runs a model against a
+markdown prompt; a <code>script:</code> node runs Python and returns structured output.</p>
+<p><strong>Workflow</strong> — one YAML file, one job. The pack has five: <code>factory-triage</code>,
+<code>factory-implement</code>, <code>factory-validate</code>, <code>factory-fix</code>, <code>factory-regress</code>.</p>
+<p><strong>Worktree</strong> — a separate git checkout of one branch, created by Archon per run
+(<code>--branch</code>). <code>implement</code>, <code>fix</code> and <code>validate</code> need one; <code>triage</code> runs
+<code>--no-worktree</code> because it changes no code (<code>dispatch.py:252</code>, <code>NEEDS_WORKTREE</code>).</p>
+<p><strong>Fresh context</strong> — <code>context: fresh</code> on a node. Not a performance choice. A node that
+inherits the previous node's context inherits its reasoning, and the independence
+argument rests on some nodes not having seen it.</p>
+<p><strong>Model tier</strong> — <code>small</code> / <code>medium</code> / <code>large</code>, not literal model IDs. Archon resolves
+a tier against whatever provider is configured, so a factory written in tiers survives
+a provider swap. Set in <code>config.py</code>: <code>MODEL_PLAN=large</code>, <code>MODEL_BUILD=medium</code>,
+<code>MODEL_JUDGE=medium</code>, <code>MODEL_SORT=small</code>.</p>
+<hr />
+<h2 id="caps-and-numbers">Caps and numbers</h2>
+<table>
+<thead>
+<tr>
+<th>Setting</th>
+<th>Default</th>
+<th>Why that number</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>SIZE_CAP</code></td>
+<td>500 lines of <strong>production</strong> code</td>
+<td>Nothing ships that a person could not review even in principle. Tests are exempt: PR #14 was rejected at 515 lines of which 404 were tests — 141 lines of production code, blocked for being well tested.</td>
+</tr>
+<tr>
+<td><code>TOTAL_CAP</code></td>
+<td>1500 lines</td>
+<td>The backstop, so "put it in <code>tests/</code>" is not a way around the cap</td>
+</tr>
+<tr>
+<td><code>FILE_CAP</code></td>
+<td>12 files</td>
+<td>Catches what a line cap cannot: a six-file change that grows to eleven with five one-line "while I was in here" edits, under the line cap the whole way</td>
+</tr>
+<tr>
+<td><code>MAX_FIX_ATTEMPTS</code></td>
+<td>2</td>
+<td>Without a cap a PR ping-pongs until the budget is gone</td>
+</tr>
+<tr>
+<td><code>MAX_PARALLEL</code></td>
+<td>1</td>
+<td>Above one, the per-target lock becomes mandatory</td>
+</tr>
+<tr>
+<td><code>ISSUE_CAP_PER_DAY</code></td>
+<td>3 per non-owner author</td>
+<td>Flood protection. The repository owner is exempt.</td>
+</tr>
+<tr>
+<td><code>INTERVAL_MINUTES</code></td>
+<td>30</td>
+<td>Slower than feels right on purpose. A fast loop multiplies the cost of a mistake before anyone notices the mistake.</td>
+</tr>
+<tr>
+<td><code>LOCK_STALE_MINUTES</code></td>
+<td>180</td>
+<td>Fallback for when a lock's recorded PID cannot be checked at all</td>
+</tr>
+</tbody>
+</table>
+<p>All of them live in <code>template/factory/config.py</code> and every one is overridable from the
+environment under the same name with a <code>FACTORY_</code> prefix.</p>
+</body>
+</html>

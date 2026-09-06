@@ -1,0 +1,753 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>Component map</title>
+<style>
+  :root {
+    --bg: #0f172a; --card: #1e293b; --text: #e2e8f0; --text-dim: #cbd5e1;
+    --muted: #94a3b8; --accent: #fb923c; --accent2: #2dd4bf;
+    --border: #334155; --code-bg: #1e293b;
+  }
+  body {
+    background: var(--bg); color: var(--text);
+    font-family: -apple-system, Segoe UI, Helvetica, Arial, sans-serif;
+    line-height: 1.6; max-width: 860px; margin: 0 auto; padding: 2.5rem 1.5rem 4rem;
+  }
+  h1, h2, h3, h4 { color: var(--text); line-height: 1.3; }
+  h1 { border-bottom: 1px solid var(--border); padding-bottom: 0.5rem; }
+  h2 { border-bottom: 1px solid var(--border); padding-bottom: 0.3rem; margin-top: 2.5rem; }
+  a { color: var(--accent2); }
+  p, li { color: var(--text-dim); }
+  code { background: var(--code-bg); border: 1px solid var(--border); border-radius: 3px; padding: 0.1em 0.35em; font-size: 0.9em; }
+  pre { background: var(--code-bg); border: 1px solid var(--border); border-radius: 6px; padding: 1rem; overflow-x: auto; }
+  pre code { border: none; padding: 0; background: none; }
+  blockquote { border-left: 3px solid var(--accent); margin-left: 0; padding-left: 1rem; color: var(--muted); }
+  table { border-collapse: collapse; width: 100%; overflow-x: auto; display: block; }
+  th, td { border: 1px solid var(--border); padding: 0.5rem 0.75rem; text-align: left; }
+  th { background: var(--card); }
+  hr { border: none; border-top: 1px solid var(--border); margin: 2rem 0; }
+</style>
+</head>
+<body>
+<h1 id="component-map">Component map</h1>
+<p>Every file in this repo: what it does, whether it is enforced in code or by a prompt,
+and whether it is tied to Archon or portable to another engine.</p>
+<blockquote>
+<p><strong>Tracks:</strong> the whole of <code>bin/</code> and <code>template/</code>. After <code>git pull</code>, diff this against
+<code>git log --stat</code> on those directories.</p>
+</blockquote>
+<hr />
+<h2 id="the-five-components">The five components</h2>
+<p>Cole's framing. Everything in the repo is one of these.</p>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>Component</th>
+<th>This repo's version</th>
+<th>Yours must have</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>Workflow-driven repo</td>
+<td>Archon, five workflows in <code>.archon/workflows/factory/</code></td>
+<td>some engine that runs ordered steps with fresh context per step</td>
+</tr>
+<tr>
+<td>2</td>
+<td>The trigger</td>
+<td><code>factory/dispatch.py</code> on a timer, <code>factory/regress-trigger.py</code> weekly</td>
+<td>a <strong>poll</strong>, not a push</td>
+</tr>
+<tr>
+<td>3</td>
+<td>Deployment</td>
+<td><code>factory/deploy.py</code>, unset by default</td>
+<td>anything that puts merged code in front of a stranger</td>
+</tr>
+<tr>
+<td>4</td>
+<td>Guidance layer</td>
+<td><code>MISSION.md</code>, <code>FACTORY_RULES.md</code>, <code>CLAUDE.md</code></td>
+<td>the same three, and the out-of-scope list is the load-bearing part</td>
+</tr>
+<tr>
+<td>5</td>
+<td>Validation harness</td>
+<td><code>harness/ci.py</code>, the holdout, the mutation set</td>
+<td>this is the one nobody can write for you</td>
+</tr>
+</tbody>
+</table>
+<p>Component 5 is the whole build. Components 1–4 ship done.</p>
+<hr />
+<h2 id="what-is-enforced-in-code-and-what-is-a-prompt">What is enforced in code, and what is a prompt</h2>
+<p>A gate written as an instruction in a prompt is a suggestion with good manners. This
+is the line.</p>
+<h3 id="code-a-model-cannot-argue-past-these">Code — a model cannot argue past these</h3>
+<table>
+<thead>
+<tr>
+<th>File</th>
+<th>Enforces</th>
+<th>Fails how</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>factory/gate.py</code></td>
+<td>every required marker present, counts ≥ ratchet floor, mutations all caught, <strong>overrides the judge when raw output disagrees</strong></td>
+<td>exit 1 = escalate, 2 = wrong state, 3 = verdict recorded, no merge</td>
+</tr>
+<tr>
+<td><code>factory/merge.py</code></td>
+<td>re-checks the guard, the merge base, and GitHub's own merge state before touching a branch</td>
+<td>exit 1 = needs a human, 2 = already requeued</td>
+</tr>
+<tr>
+<td><code>factory/guard.py</code></td>
+<td>protected paths, 500 production lines, 1500 total, 12 files</td>
+<td><strong>fails closed</strong> — exit 2 when the diff cannot be computed</td>
+</tr>
+<tr>
+<td><code>factory/state.py</code></td>
+<td>the transition table. <code>needs-human</code> is terminal: its allowed-destination set is empty</td>
+<td><code>IllegalTransition</code></td>
+</tr>
+<tr>
+<td><code>factory/watchdog.py</code></td>
+<td>seven detectors over the ledger</td>
+<td>writes <code>.factory/STOP</code> and notifies</td>
+</tr>
+<tr>
+<td><code>factory/tripwire.py</code></td>
+<td>no builder artifact reached the validator</td>
+<td>non-zero, loudly</td>
+</tr>
+<tr>
+<td><code>factory/dispatch.py:59</code></td>
+<td>the autonomy dial per action</td>
+<td>logs <code>HOLD</code> and does not dispatch</td>
+</tr>
+<tr>
+<td><code>harness/ci.py</code></td>
+<td>the rung ladder, and that zero tests is not a pass</td>
+<td>exit non-zero, <code>GATE_FAILED: &lt;rung&gt;</code></td>
+</tr>
+<tr>
+<td><code>.factory/locks/floor.json</code></td>
+<td>the ratchet — and it is protected, so lowering it is a human commit</td>
+<td>gate blocker</td>
+</tr>
+<tr>
+<td><code>.factory/holdout/</code></td>
+<td>denied to every builder node for <strong>read</strong>, not just write</td>
+<td>the node cannot open it</td>
+</tr>
+</tbody>
+</table>
+<h3 id="prompts-yours-to-rewrite-and-cole-says-so">Prompts — yours to rewrite, and Cole says so</h3>
+<table>
+<thead>
+<tr>
+<th>File</th>
+<th>Lines</th>
+<th>Job</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>implement/commands/prime.md</code></td>
+<td>67</td>
+<td>orient in the codebase, read-only</td>
+</tr>
+<tr>
+<td><code>implement/commands/plan.md</code></td>
+<td>169</td>
+<td><strong>the personalisation layer.</strong> The premium slot. Explicitly "replace it with your own planning step".</td>
+</tr>
+<tr>
+<td><code>implement/commands/implement.md</code></td>
+<td>115</td>
+<td>work the plan task by task</td>
+</tr>
+<tr>
+<td><code>implement/commands/review.md</code></td>
+<td>87</td>
+<td>read your own diff before anyone else does</td>
+</tr>
+<tr>
+<td><code>validate/commands/judge.md</code></td>
+<td>122</td>
+<td>does this diff solve the issue as filed?</td>
+</tr>
+<tr>
+<td><code>triage/commands/triage.md</code></td>
+<td>118</td>
+<td>in scope, deferred, out of scope, or human?</td>
+</tr>
+<tr>
+<td><code>fix/commands/fix.md</code></td>
+<td>106</td>
+<td>address the findings and nothing else</td>
+</tr>
+<tr>
+<td><code>regress/commands/diagnose.md</code></td>
+<td>79</td>
+<td>what broke on main, with evidence</td>
+</tr>
+</tbody>
+</table>
+<p>Ten Claude Code skills in <code>template/.claude/skills/</code> let you drive the same loop by
+hand without the engine: <code>factory-prime</code>, <code>-plan</code>, <code>-implement</code>, <code>-review</code>, <code>-judge</code>,
+<code>-triage</code>, <code>-fix</code>, plus <code>-e2e</code> and <code>-holdout</code> (drive the journeys / the hidden
+scenarios) and <code>-setup</code> (the install interview). See
+<a href="#portability-what-archon-supplies">Portability</a> below for what they cannot give you.</p>
+<hr />
+<h2 id="every-file">Every file</h2>
+<h3 id="bin-the-installer-in-this-repo-only"><code>bin/</code> — the installer, in this repo only</h3>
+<table>
+<thead>
+<tr>
+<th>File</th>
+<th>Lines</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>factory.py</code></td>
+<td>886</td>
+<td>The CLI. <code>init</code>, <code>doctor</code>, <code>tick</code>, <code>run</code>, <code>accept</code>, <code>level</code>, <code>arm</code>/<code>disarm</code>, <code>halt</code>/<code>resume</code>, <code>status</code>. <code>init</code> copies the template in, creates the GitHub labels, and installs Archon if absent.</td>
+</tr>
+<tr>
+<td><code>sync-to.py</code></td>
+<td>172</td>
+<td>Push template fixes into a repo that already installed. Compares content and copies only what differs — because on Git Bash for Windows, <code>cp -r src/. dst/</code> reports success and leaves the destination untouched. Two rounds of a real fix were lost to that.</td>
+</tr>
+<tr>
+<td><code>audit.py</code></td>
+<td>928</td>
+<td>Audits the <strong>machinery</strong>, not your repo. <code>doctor</code> asks "is this repository set up correctly?"; this asks "is the machinery underneath it still sound?" A correctly configured repo running broken machinery passes every check the doctor has.</td>
+</tr>
+<tr>
+<td><code>selfcheck-mutations.py</code></td>
+<td>183</td>
+<td>Mutation-tests the self-test. Injects defects into a throwaway copy of the template and requires <code>_selftest.py</code> to go red.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="templatefactory-the-runtime"><code>template/factory/</code> — the runtime</h3>
+<p>Copied to <code>factory/</code> in your repo.</p>
+<table>
+<thead>
+<tr>
+<th>File</th>
+<th>Lines</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>config.py</code></td>
+<td>462</td>
+<td><strong>The file you edit.</strong> Every project-specific path, command, marker, cap and model tier. Every setting overridable from the environment under the same name. Also resolves <code>ROOT</code> vs <code>SHARED</code> and detects the base branch from <code>origin/HEAD</code> rather than assuming <code>main</code>.</td>
+</tr>
+<tr>
+<td><code>state.py</code></td>
+<td>752</td>
+<td>The state machine over GitHub labels. <code>TRANSITIONS</code>, <code>next_action()</code>, <code>set_state()</code>, <code>comment()</code>, <code>stop_requested()</code>, <code>init_labels()</code>.</td>
+</tr>
+<tr>
+<td><code>dispatch.py</code></td>
+<td>906</td>
+<td>The tick. Stop button → watchdog → reconcile → dial → concurrency → priority order. Consults no model.</td>
+</tr>
+<tr>
+<td><code>gate.py</code></td>
+<td>682</td>
+<td>The structural gate. Decision 1 of 2 that is code.</td>
+</tr>
+<tr>
+<td><code>merge.py</code></td>
+<td>453</td>
+<td>The merge. Decision 2 of 2. Re-checks everything itself and raises the ratchet floor.</td>
+</tr>
+<tr>
+<td><code>guard.py</code></td>
+<td>279</td>
+<td>Protected paths and the caps. Runs first, fails closed.</td>
+</tr>
+<tr>
+<td><code>watchdog.py</code></td>
+<td>337</td>
+<td>Seven detectors over the ledger. <code>assess()</code> is a pure function, which is what makes them testable.</td>
+</tr>
+<tr>
+<td><code>ledger.py</code></td>
+<td>168</td>
+<td>Append-only event log. Deliberately dumb: no analysis, no thresholds. Tolerant on read — a half-written line is skipped, because a watchdog that crashes on its own input is off exactly when things go wrong.</td>
+</tr>
+<tr>
+<td><code>notify.py</code></td>
+<td>97</td>
+<td>The one escalation channel, defined once because three routes reach <code>needs-human</code> and three copies of a notify block is three that drift. Never fatal.</td>
+</tr>
+<tr>
+<td><code>trigger.py</code></td>
+<td>255</td>
+<td>Installs the schedule (cron or Windows Scheduled Task). <strong>Refuses below dial 1.</strong></td>
+</tr>
+<tr>
+<td><code>regress-trigger.py</code></td>
+<td>85</td>
+<td>Dispatches the weekly regression. Separate from the dispatcher so a busy queue cannot starve the one check that looks at main.</td>
+</tr>
+<tr>
+<td><code>deploy.py</code></td>
+<td>286</td>
+<td>Component 3. No-ops when nothing changed. <strong>Refuses to move the pointer when <code>HEALTH_CMD</code> is empty</strong> — a deploy with no health check is a deploy that cannot fail, and a step that cannot fail is a comment. Has <code>--rollback</code>.</td>
+</tr>
+<tr>
+<td><code>doctor.py</code></td>
+<td>459</td>
+<td>The deterministic audit. A checklist, not a test suite. It <strong>blocks the dial</strong>: level 2 needs a real E2E, level 3 needs a holdout, a mutation set and a ratchet.</td>
+</tr>
+<tr>
+<td><code>tripwire.py</code></td>
+<td>124</td>
+<td>Independence check on the validator's working directory.</td>
+</tr>
+<tr>
+<td><code>nodeio.py</code></td>
+<td>122</td>
+<td>A node's stdout is its <em>value</em>. <code>note()</code> and stray <code>print()</code> go to stderr; <code>emit()</code> writes the JSON payload once. A single friendly line before the payload makes the output unparseable, and the error surfaces several nodes downstream.</td>
+</tr>
+<tr>
+<td><code>_selftest.py</code></td>
+<td>1272</td>
+<td>The harness for the machinery. Fast, offline, no network. <code>doctor</code> runs it every time. Ships done — it is the one thing you do not have to build.</td>
+</tr>
+<tr>
+<td><code>_test_watchdog.py</code></td>
+<td>271</td>
+<td>Synthetic histories for the seven detectors.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="templateharness-the-validation-harness"><code>template/harness/</code> — the validation harness</h3>
+<table>
+<thead>
+<tr>
+<th>File</th>
+<th>Lines</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ci.py</code></td>
+<td>348</td>
+<td>The rung ladder. The ladder is the same in every factory; every command it runs lives in the config file, not here.</td>
+</tr>
+<tr>
+<td><code>harness.config.json</code></td>
+<td>—</td>
+<td><strong>The stack-specific half.</strong> <code>static</code>, <code>unit</code>, <code>unit_count_pattern</code>, <code>driver</code> (<code>http</code>/<code>cli</code>/<code>library</code>), the agent command, browser install check. Ships with examples for Python, uv, Node, Bun, Go, Rust, Ruby and .NET.</td>
+</tr>
+<tr>
+<td><code>appproc.py</code></td>
+<td>378</td>
+<td>The three drivers. Every one prints <code>APP_STARTED</code>. Split out because an HTTP-only version makes the scaffold silently useless for a CLI, a library or a batch job — the majority of software.</td>
+</tr>
+<tr>
+<td><code>agentcheck.py</code></td>
+<td>412</td>
+<td>Runs one agent-driven rung and validates what it reports. Rejects any assertion that restates the expectation instead of the observed value.</td>
+</tr>
+<tr>
+<td><code>mutations/run.py</code></td>
+<td>—</td>
+<td>Copies the repo to a temp dir per defect, applies one textual mutation to real source, runs the gate there, requires red.</td>
+</tr>
+<tr>
+<td><code>mutations/defects.json</code></td>
+<td>—</td>
+<td>The defects. Protected.</td>
+</tr>
+<tr>
+<td><code>END-TO-END.md</code></td>
+<td>64</td>
+<td><strong>Yours to write.</strong> Two to five journeys in plain English.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="templatefactory-runtime-state-and-the-operator-loop"><code>template/.factory/</code> — runtime state and the operator loop</h3>
+<table>
+<thead>
+<tr>
+<th>File</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>loop.sh</code></td>
+<td>The dispatcher loop. One tick per interval. Singleton by PID file — three copies once ran at once and raced three merge dispatches inside three seconds. Writes <code>.factory/runs/loop.log</code>, which is the file <code>monitor.py</code> tails.</td>
+</tr>
+<tr>
+<td><code>monitor.py</code></td>
+<td>The operator watch, deliberately outside the factory. <strong>Silence is not health</strong> — it emits when the loop goes quiet, not only when something breaks.</td>
+</tr>
+<tr>
+<td><code>notify.sh</code></td>
+<td>Where escalations go. Writes the log first and unconditionally, then tries <code>FACTORY_NTFY_TOPIC</code> / <code>FACTORY_WEBHOOK_URL</code>, then a desktop notification, and says out loud when it could not deliver.</td>
+</tr>
+<tr>
+<td><code>locks/floor.json</code></td>
+<td>The ratchet. Protected.</td>
+</tr>
+<tr>
+<td><code>holdout/HOLDOUT.md</code></td>
+<td><strong>Yours to write.</strong> Read-denied to every builder node.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="template-root-governance"><code>template/</code> root — governance</h3>
+<table>
+<thead>
+<tr>
+<th>File</th>
+<th>Lines</th>
+<th>Yours?</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>MISSION.md</code></td>
+<td>161</td>
+<td><strong>Entirely yours.</strong> The one file nobody can ship for you.</td>
+</tr>
+<tr>
+<td><code>FACTORY_RULES.md</code></td>
+<td>315</td>
+<td>Ships ~95% filled in. The project-specific lines are in <code>&lt;ANGLE BRACKETS&gt;</code>; <code>doctor</code> reports any left.</td>
+</tr>
+<tr>
+<td><code>FACTORY.md</code></td>
+<td>159</td>
+<td>Your factory's status page: current dial, the mutation set's rung spread, the ratchet numbers, the incident log.</td>
+</tr>
+<tr>
+<td><code>gitignore-additions.txt</code></td>
+<td>—</td>
+<td>What <code>init</code> appends.</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="archon-in-enough-detail-to-read-the-yaml">Archon, in enough detail to read the YAML</h2>
+<p>Archon (<code>github.com/coleam00/archon</code>) runs a workflow as a graph of nodes. Full docs
+at <code>archon.diy/docs</code>. What follows is every field this workflow pack actually uses,
+read off the five YAML files — accurate for this pack, not a complete Archon spec.</p>
+<h3 id="the-eight-roles">The eight roles</h3>
+<p>Everything below traces back to eight jobs Archon does for this repo. Each one is a
+row in the <a href="#portability-what-archon-supplies">portability table</a> further down — this
+is the same list, named plainly:</p>
+<ol>
+<li><strong>Runs the workflow graphs</strong> — the engine for Component 1: the five node graphs in
+   <code>.archon/workflows/factory/</code> (<code>factory-implement</code>, <code>factory-validate</code>,
+   <code>factory-triage</code>, <code>factory-fix</code>, <code>factory-regress</code>).</li>
+<li><strong>Fresh context per node</strong> — <code>context: fresh</code> starts a new model session per node,
+   so the judge does not inherit the builder's reasoning.</li>
+<li><strong>Tool grant and deny leash per node</strong> — <code>allowed_tools</code> / <code>denied_tools</code> (e.g.
+   <code>["Read(.factory/holdout/**)"]</code>) is what makes the holdout actually hidden from the
+   builder, not just hidden by convention.</li>
+<li><strong>A worktree per run</strong> — the <code>--branch</code> flag isolates each lap's checkout so two
+   laps cannot collide.</li>
+<li><strong>Structured output between nodes</strong> — <code>output_format</code> (a JSON schema) plus
+   <code>nodeio.py</code> validates one node's stdout before the next node consumes it.</li>
+<li><strong>Detached dispatch</strong> — <code>--detach</code> returns immediately, so a 20-minute run does not
+   stall the next dispatch tick.</li>
+<li><strong>Run status and cost</strong> — <code>archon workflow status</code> / <code>archon workflow get &lt;id&gt;
+   --json</code> feeds the ledger's <code>cost_usd</code> and the watchdog's spend detectors.</li>
+<li><strong>Model tier indirection plus conditionals</strong> — <code>small</code>/<code>medium</code>/<code>large</code> insulates
+   the workflows from a provider swap; <code>when:</code> / <code>cancel:</code> let a plan stop a run early.</li>
+</ol>
+<p>Mechanically this is seven shell-out call sites — <code>dispatch.py:281,416,467,516,592</code>,
+<code>regress-trigger.py:62</code>, <code>doctor.py:113</code> — plus <code>bin/factory.py</code>'s <code>init</code> installing
+Archon if it is missing. See <a href="#portability-what-archon-supplies">Portability</a> below
+for what breaks without each one.</p>
+<h3 id="workflow-level-fields">Workflow-level fields</h3>
+<pre><code class="language-yaml">name: factory-implement
+description: |
+  Take ONE accepted issue to an open pull request.
+model: medium              # default tier for command nodes that do not override it
+mutates_checkout: false    # triage only — it changes no code
+inputs:
+  target:
+    default: &quot;&quot;
+    description: The issue to build, as gh:issue:&lt;n&gt;.
+returns: open-pr           # which node's output is the workflow's result
+nodes: [...]
+</code></pre>
+<h3 id="node-fields">Node fields</h3>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>id</code></td>
+<td>the node's name. Other nodes reference its output as <code>$&lt;id&gt;.output.&lt;field&gt;</code></td>
+</tr>
+<tr>
+<td><code>command: plan</code></td>
+<td>a <strong>model node</strong>. Runs <code>commands/plan.md</code> from the workflow directory.</td>
+</tr>
+<tr>
+<td><code>script: preflight</code></td>
+<td>a <strong>script node</strong>. Runs <code>scripts/preflight.py</code>.</td>
+</tr>
+<tr>
+<td><code>runtime: uv</code></td>
+<td>how to run a script node</td>
+</tr>
+<tr>
+<td><code>model: large</code></td>
+<td>tier override for this node: <code>small</code>, <code>medium</code>, <code>large</code></td>
+</tr>
+<tr>
+<td><code>context: fresh</code></td>
+<td>start a new model session. Not a performance choice — see below.</td>
+</tr>
+<tr>
+<td><code>depends_on: [prime]</code></td>
+<td>edges in the graph</td>
+</tr>
+<tr>
+<td><code>when: "$gate-plan.output.proceed == true"</code></td>
+<td>conditional execution</td>
+</tr>
+<tr>
+<td><code>with:</code></td>
+<td>inputs bound into the node, e.g. <code>target: "$resolve.output.target"</code></td>
+</tr>
+<tr>
+<td><code>output_format:</code></td>
+<td>a JSON schema. The node's stdout is parsed against it.</td>
+</tr>
+<tr>
+<td><code>trigger_rule: all_done</code></td>
+<td>run even if a dependency failed</td>
+</tr>
+<tr>
+<td><code>retry: {max_attempts: 2, on_error: all}</code></td>
+<td>retry the node</td>
+</tr>
+<tr>
+<td><code>timeout: 1800000</code> / <code>idle_timeout: 900000</code></td>
+<td>milliseconds</td>
+</tr>
+<tr>
+<td><code>allowed_tools: [Read, Glob, Grep, Write]</code></td>
+<td>the grant</td>
+</tr>
+<tr>
+<td><code>denied_tools: ["Read(.factory/holdout/**)"]</code></td>
+<td>the leash</td>
+</tr>
+<tr>
+<td><code>cancel: "reason"</code></td>
+<td>a node whose only job is to stop the run</td>
+</tr>
+</tbody>
+</table>
+<h3 id="four-things-the-yaml-taught-the-hard-way">Four things the YAML taught the hard way</h3>
+<p><strong>1. The grant is coarse; the leash is the deny.</strong> Proven by probe, in both
+directions:</p>
+<pre><code class="language-yaml">allowed_tools: [&quot;Bash(python:*)&quot;]   # grants NOTHING — the node has no shell
+allowed_tools: [Bash]               # grants a shell
+denied_tools:  [&quot;Bash(git:*)&quot;]      # genuinely blocks git
+</code></pre>
+<p>The first version scoped the grant, and the build nodes ran for weeks with no shell:
+they could not run the quick gate, said so politely in prose, and exited 0.</p>
+<p><strong>2. A failed producer fails the binding, and <code>trigger_rule: all_done</code> does not rescue
+it.</strong> The <code>apply</code> node in <code>factory-validate</code> binds <code>target</code> to <code>$resolve.output.target</code>
+rather than <code>$prepare.output.target</code> for exactly this reason. When <code>prepare</code> died, the
+one node that exists to report an infrastructure failure could not run. <code>resolve</code> is a
+pure parse and effectively never fails.</p>
+<p><strong>3. Constrain only what you branch on.</strong> <code>gate.py</code> reads one field to decide anything:
+<code>verdict</code>. Every enum on a field nobody branches on is a fresh chance per finding to
+fail the whole run over a synonym. The judge node died five times on
+<code>error_max_structured_output_retries</code> before the schema was cut back.</p>
+<p><strong>4. YAML 1.1 parses bare <code>yes</code> and <code>no</code> as booleans.</strong> So:</p>
+<pre><code class="language-yaml">enum: [&quot;yes&quot;, &quot;partially&quot;, &quot;no&quot;]     # quoted, deliberately
+</code></pre>
+<p>Unquoted, the enum loaded as <code>[True, "partially", False]</code> against a field declared
+<code>type: string</code>. The judge produced something satisfying the contradiction and said
+nothing useful. Nothing errored anywhere.</p>
+<h3 id="cli-as-the-dispatcher-calls-it">CLI, as the dispatcher calls it</h3>
+<pre><code class="language-bash">archon workflow run factory-implement --branch factory/impl-12 --detach &quot;implement gh:issue:12&quot;
+archon workflow run factory-triage --no-worktree &quot;triage gh:issue:12&quot;
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>Flag</th>
+<th>Effect</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--branch &lt;name&gt;</code></td>
+<td>run in a fresh git worktree on that branch</td>
+</tr>
+<tr>
+<td><code>--no-worktree</code></td>
+<td>run in place (triage only)</td>
+</tr>
+<tr>
+<td><code>--detach</code></td>
+<td>return immediately; the dispatcher never waits</td>
+</tr>
+</tbody>
+</table>
+<p>The trigger message (<code>"implement gh:issue:12"</code>) is how the target reaches the run.
+<code>resolve-target.py</code> parses it deterministically before any model sees anything, and it
+arrives as an environment variable rather than substituted text — that is the
+injection guard, and the reason it cannot be an inline bash one-liner.</p>
+<hr />
+<h2 id="portability-what-archon-supplies">Portability: what Archon supplies</h2>
+<p>If you rebuild this on Claude Code, or any other engine, these are the properties you
+must reproduce. The middle column is what breaks without each one.</p>
+<table>
+<thead>
+<tr>
+<th>Property</th>
+<th>What breaks without it</th>
+<th>How Archon gives it</th>
+<th>Claude Code equivalent</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Fresh context per node</strong></td>
+<td>the judge inherits the builder's reasoning; the whole independence argument collapses</td>
+<td><code>context: fresh</code></td>
+<td>a subagent per step (<code>Agent</code> tool), never one long session</td>
+</tr>
+<tr>
+<td><strong>Read denial on a path</strong></td>
+<td>the builder reads the holdout and optimises against it</td>
+<td><code>denied_tools: ["Read(.factory/holdout/**)"]</code></td>
+<td><code>permissions.deny</code> in <code>.claude/settings.json</code>, or a <code>PreToolUse</code> hook that blocks the path</td>
+</tr>
+<tr>
+<td><strong>A worktree per run</strong></td>
+<td>two laps collide in one checkout; <code>SHARED</code> state is deleted with the worktree</td>
+<td><code>--branch</code></td>
+<td><code>git worktree add</code> yourself, and get <code>ROOT</code>/<code>SHARED</code> right</td>
+</tr>
+<tr>
+<td><strong>Structured node output</strong></td>
+<td>a friendly line before the payload breaks the consumer several nodes downstream</td>
+<td><code>output_format</code> + <code>nodeio.py</code></td>
+<td>a subagent returning JSON, validated by the caller</td>
+</tr>
+<tr>
+<td><strong>Detached dispatch</strong></td>
+<td>a tick that blocks twenty minutes overlaps the next one</td>
+<td><code>--detach</code></td>
+<td>background Bash, plus a way to ask whether the run settled</td>
+</tr>
+<tr>
+<td><strong>Run status and cost</strong></td>
+<td>the watchdog's spend detectors go blind; locks can only be freed by age</td>
+<td><code>archon workflow status</code>, cost per run</td>
+<td>you need some equivalent, or the ledger records <code>cost_usd: null</code> and D5 quietly weakens</td>
+</tr>
+<tr>
+<td><strong>Model tier indirection</strong></td>
+<td>a provider swap rewrites every workflow</td>
+<td><code>small</code>/<code>medium</code>/<code>large</code></td>
+<td>your own mapping</td>
+</tr>
+<tr>
+<td><strong>Conditional / cancel nodes</strong></td>
+<td>a plan that says "do not build this" still runs five more nodes</td>
+<td><code>when:</code>, <code>cancel:</code></td>
+<td>an early return in your orchestration</td>
+</tr>
+</tbody>
+</table>
+<h3 id="what-is-portable-as-is">What is portable as-is</h3>
+<p>Everything in <code>factory/</code> and <code>harness/</code> is plain Python that shells out to <code>git</code> and
+<code>gh</code>. <strong>Nothing imports Archon.</strong> The entire coupling is <code>config.ARCHON_BIN</code> plus seven
+call sites that shell out to it:</p>
+<table>
+<thead>
+<tr>
+<th>Where</th>
+<th>Call</th>
+<th>Job</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>dispatch.py:281</code></td>
+<td><code>archon workflow run &lt;wf&gt; --branch/--no-worktree --detach</code></td>
+<td>launch a lap</td>
+</tr>
+<tr>
+<td><code>dispatch.py:416</code></td>
+<td><code>archon workflow runs --json</code></td>
+<td>find the engine's run id for the lock</td>
+</tr>
+<tr>
+<td><code>dispatch.py:467</code></td>
+<td><code>archon workflow get &lt;id&gt; --json</code></td>
+<td>did the run settle?</td>
+</tr>
+<tr>
+<td><code>dispatch.py:516</code></td>
+<td><code>archon workflow get &lt;id&gt; --json</code></td>
+<td>what did it cost?</td>
+</tr>
+<tr>
+<td><code>dispatch.py:592</code></td>
+<td><code>archon workflow runs --json</code></td>
+<td>release settled locks</td>
+</tr>
+<tr>
+<td><code>regress-trigger.py:62</code></td>
+<td><code>archon workflow run factory-regress</code></td>
+<td>the weekly run</td>
+</tr>
+<tr>
+<td><code>doctor.py:113</code></td>
+<td><code>archon version</code></td>
+<td>is the engine installed?</td>
+</tr>
+</tbody>
+</table>
+<p>Swap the engine and you rewrite those seven plus the eight prompt files. The state
+machine, the gate, the guard, the merge, the ratchet, the watchdog, the ledger and the
+whole harness come across unchanged.</p>
+<p>That is the useful shape of this codebase: <strong>the engine is seven shell-outs, and the
+safety machinery is ~5,000 lines that do not care which engine you use.</strong></p>
+<p>The ten skills in <code>template/.claude/skills/factory-*</code> are the proof: the same loop,
+driven by hand. What they <em>cannot</em> give you is the four properties in the table above
+that need an orchestrator — fresh context enforced per step, a deny list the node
+cannot lift, a worktree per run, and detached dispatch. A skill you invoke in your own
+session has your session's context and your session's permissions.</p>
+</body>
+</html>

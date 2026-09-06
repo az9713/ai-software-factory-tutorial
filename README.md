@@ -6,6 +6,8 @@
 > exists so the owner can follow Cole's project week to week and learn from it. `docs/`
 > holds the added onboarding material; everything else below is Cole's original README,
 > describing his tool.
+>
+> **Read the docs live:** https://az9713.github.io/ai-software-factory-tutorial/
 
 A repo that takes work in as an issue and ships validated code out, with nobody at
 the keyboard.

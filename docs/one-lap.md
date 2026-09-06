@@ -11,26 +11,31 @@ One issue, from filed to merged, naming every file that touches it. Read
 
 ## The shape, in one picture
 
+```mermaid
+flowchart TD
+  H([you file issue 12]) --> T
+  T[dispatch.py, one tick<br/>on a timer, forever] --> TR[factory-triage<br/>no worktree, dial 4+]
+  TR --> L1[issue: factory:accepted<br/>+ priority:high] --> T
+  T --> IM[factory-implement<br/>branch factory/implement-issue-12, dial 1+]
+  IM --> L2[PR 14: factory:needs-review<br/>body says Fixes 12] --> T
+  T --> VA[factory-validate<br/>own worktree, dial 2+]
+  VA --> GA{gate.py<br/>raw markers + judge verdict}
+  GA -- green --> ME[merge.py, dial 3+<br/>re-checks everything, squashes, raises the floor]
+  GA -- green but a call to agree --> HE([factory:held<br/>waits for you])
+  GA -- red, under 2 attempts --> FX[factory-fix<br/>own worktree] --> L3[PR back to factory:needs-review] --> T
+  GA -- red, at the cap --> NH([factory:needs-human])
+  ME --> DP[deploy.py, if configured]
+  W[regress-trigger.py<br/>weekly, not the tick] --> RG[factory-regress<br/>full gate against main] -- files an issue, dial 4+ --> H
+  classDef code fill:#172033,stroke:#2dd4bf,color:#e2e8f0
+  classDef wf fill:#1e293b,stroke:#fb923c,color:#e2e8f0
+  classDef human fill:#1e293b,stroke:#f87171,color:#e2e8f0
+  class T,GA,ME,DP,W code
+  class TR,IM,VA,FX,RG wf
+  class H,HE,NH human
 ```
-you file issue #12
-        |
-        v
-   [ tick ]  dispatch.py  -- on a timer, forever
-        |
-        +-- triage      -> factory:accepted + priority:high
-        +-- implement   -> branch factory/implement-issue-12, PR #14, factory:needs-review
-        +-- validate    -> gate.py reads raw markers + judge verdict
-        |                    |
-        |                    +-- green  -> merge.py -> squashed, floor raised
-        |                    +-- held   -> factory:held, waits for you
-        |                    +-- red    -> factory:needs-fix
-        +-- fix         -> addresses findings, hands back to validate (max 2 attempts)
 
-   (weekly, separately)  regress -> runs the gate against main -> files its own issues
-```
-
-Five workflows. One dispatcher. Two decisions made by code that no model can argue
-past: **the gate** and **the merge**.
+Five workflows (orange). One dispatcher. Two decisions made by code that no model can
+argue past (teal): **the gate** and **the merge**. Red is where a person is needed.
 
 ---
 
@@ -81,6 +86,30 @@ to `exclude`, ask again until the slots run out.
 > **The dispatcher consults no model.** A model asked "what work is pending?" invents
 > dispatches for issues that were never filed. The dumbest component in the system is
 > the one where a wrong answer is worse than no answer.
+
+The six phases as the code runs them. Every early exit is exit 0, on purpose: a tick
+that found a reason not to work is a tick that worked.
+
+```mermaid
+flowchart TD
+  S1{phase 1, the stop button<br/>.factory/STOP or factory:stop label<br/>unreadable counts as stopped} -- stopped --> X0([exit 0, say which kind])
+  S1 -- clear --> S2{phase 2, the watchdog<br/>assess last 120 min of the ledger}
+  S2 -- any HALT --> X1([write .factory/STOP, notify, exit 0])
+  S2 -- WATCHDOG_OK, or WATCHDOG_BROKE --> S3[phase 3, reconcile, every tick<br/>release settled locks, reap dead ones,<br/>escalate a validating PR nobody holds,<br/>escalate an in-progress issue with no PR]
+  S3 --> S4{phase 4, the dial<br/>config.AUTONOMY under 1?}
+  S4 -- yes --> X2([log what it would do, exit 0])
+  S4 -- no --> S5{phase 5, capacity<br/>locks held at MAX_PARALLEL?}
+  S5 -- full --> X3([exit 0])
+  S5 -- room --> S6[phase 6, state.next_action with exclude]
+  S6 --> A{action?}
+  A -- idle --> X4([exit 0])
+  A -- below its dial level --> HOLD[log HOLD, add to exclude] --> S6
+  A -- implement / validate / fix / triage --> DI[acquire lock, archon workflow run --detach<br/>add target to exclude] --> S5
+  A -- merge --> ME[merge.py as a subprocess<br/>then deploy.py, result checked] --> S5
+  A -- escalate --> ES[escalate: label, ledger, notify] --> S5
+  classDef code fill:#172033,stroke:#2dd4bf,color:#e2e8f0
+  class S1,S2,S3,S4,S5,S6,A,HOLD,DI,ME,ES code
+```
 
 **Nothing pushes.** There is no webhook and there is not meant to be one. An issue
 filed at 09:01 waits for the next tick. A push trigger that breaks fails silently and
@@ -135,6 +164,24 @@ lock that happened to still be held stopped it, which is luck, not a mechanism.
 > directly could write a state the transition table forbids, and then the table is
 > decoration.
 
+```mermaid
+flowchart LR
+  R[resolve<br/>script] --> F[flood<br/>script, 3 per author per day]
+  R --> C[context<br/>script: issue + MISSION + RULES]
+  F --> K
+  C --> K[classify<br/>model, tier small, no tools<br/>when flood says not rate-limited]
+  K --> A[apply<br/>script, trigger_rule all_done<br/>writes state via state.py]
+  F -. rate-limited: classify skipped,<br/>apply still runs .-> A
+  classDef code fill:#172033,stroke:#2dd4bf,color:#e2e8f0
+  classDef model fill:#1e293b,stroke:#fb923c,color:#e2e8f0
+  class R,F,C,A code
+  class K model
+```
+
+`flood` and `context` run in parallel off `resolve`. `apply` is `trigger_rule:
+all_done`, so it runs whether `classify` ran or was skipped, and it is the only node
+that touches a label.
+
 Four dispositions, and one distinction is load-bearing: **`deferred` is not
 `rejected`.** An issue rejected as out-of-scope is refused forever, including the
 quarter it lands on the roadmap. `deferred` means in scope, not now.
@@ -155,6 +202,31 @@ buildable.
 `factory/implement-issue-12`. Requires dial ≥ 1. Eight numbered stages,
 twelve nodes (the extras are `resolve`, `gate-plan` and the `stop-escalated` cancel
 node).
+
+```mermaid
+flowchart TD
+  R[resolve<br/>script] --> P[preflight<br/>script: secrets ignored? prior attempt?]
+  P --> PR[prime<br/>model small, fresh<br/>Read Glob Grep Write Bash<br/>holdout denied]
+  PR --> PL[plan<br/>model large, fresh<br/>Read Glob Grep Write, NO shell<br/>holdout denied]
+  PL --> GP[gate-plan<br/>script: ESCALATE file?]
+  GP -- proceed == false --> ST([stop-escalated<br/>cancel node, run ends])
+  GP -- proceed == true --> IM[implement<br/>model medium, fresh<br/>+ Edit, Bash<br/>git and gh denied, holdout denied]
+  IM --> CO[commit<br/>script: asserts SHA and file count]
+  CO --> GU[guard<br/>script: protected paths, caps]
+  GU --> SC[selfcheck<br/>script: the full gate, for the builder only]
+  SC --> RV[review<br/>model medium, fresh<br/>Bash allowed, gh and git push/commit denied<br/>writes the PR record]
+  RV --> OP[open-pr<br/>script: pushes, opens PR 14<br/>label factory:needs-review]
+  classDef code fill:#172033,stroke:#2dd4bf,color:#e2e8f0
+  classDef model fill:#1e293b,stroke:#fb923c,color:#e2e8f0
+  classDef human fill:#1e293b,stroke:#f87171,color:#e2e8f0
+  class R,P,GP,CO,GU,SC,OP code
+  class PR,PL,IM,RV model
+  class ST human
+```
+
+Four model nodes, eight scripts. Every model node is `context: fresh`; every one is
+denied the holdout; only `plan` has no shell at all. The tools listed are the grant;
+the deny list is what actually restrains them.
 
 ### 1. `resolve` + `preflight` (scripts)
 
@@ -289,6 +361,51 @@ layers because a sentence in a prompt is not enforcement:
 | 5 | A tripwire that fails loudly if a builder artifact is present anyway | `factory/tripwire.py` |
 | 6 | **The gate overrides the judge** when raw output and verdict disagree | `factory/gate.py` |
 
+```mermaid
+flowchart TD
+  R[resolve<br/>script] --> P[prepare<br/>script: narrow fetch, governance from base,<br/>rebase, checkout, tripwire, then set validating]
+  P --> G[gate-run<br/>script: guard.py then harness/ci.py<br/>one gate log]
+  G --> B[brief<br/>script, all_done: composes everything<br/>the judge may see, substituted into the prompt]
+  B --> J[judge<br/>model medium, fresh<br/>allowed_tools: none at all]
+  J --> A[apply<br/>script, all_done: factory/gate.py decides<br/>binds target from resolve, not prepare]
+  R -. target .-> A
+  classDef code fill:#172033,stroke:#2dd4bf,color:#e2e8f0
+  classDef model fill:#1e293b,stroke:#fb923c,color:#e2e8f0
+  class R,P,G,B,A code
+  class J model
+```
+
+What reaches the judge, and what is kept away from it. The judge has no tools, so
+the brief is its entire world:
+
+```mermaid
+flowchart LR
+  subgraph in [in the brief]
+    direction TB
+    I1[the issue as filed]
+    I2[the diff against the merge base]
+    I3[commit subjects only]
+    I4[the gate log, verbatim]
+    I5[governance from the base branch]
+  end
+  subgraph out [never reaches it]
+    direction TB
+    O1[the plan]
+    O2[the implementation report]
+    O3[the priming document]
+    O4[PR comments, including its own last verdict]
+    O5[commit bodies]
+    O6[the holdout, and any file: no Read tool]
+  end
+  in --> J[judge<br/>model, fresh context, no tools]
+  J --> V[verdict + summary JSON]
+  V --> GT[gate.py: raw markers outrank the verdict]
+  classDef code fill:#172033,stroke:#2dd4bf,color:#e2e8f0
+  classDef model fill:#1e293b,stroke:#fb923c,color:#e2e8f0
+  class GT code
+  class J model
+```
+
 ### `prepare` (script)
 
 Fetches narrowly, reads governance from the base first, rebases if the base moved,
@@ -394,6 +511,32 @@ green, either it is wrong or the harness is, and either way that is a human's ca
    said `approve`, override to `request_changes`** and print `GATE_OVERRIDE`. The
    override is one-way: it can only add a reason to block.
 
+```mermaid
+flowchart TD
+  S0{PR in validating?} -- no --> E2([exit 2, GATE_REFUSED<br/>the independent validation was skipped])
+  S0 -- yes --> S1{gate log empty?} -- yes --> RED
+  S1 -- no --> S2[name the last GATE_FAILED rung, if any]
+  S2 --> S3{every REQUIRED_MARKER present?}
+  S3 -- missing, no rung named --> HUM([needs-human: the gate did not run])
+  S3 -- missing, after a red rung --> RED
+  S3 -- all present --> S4{counts at or above the floor?<br/>a floor with no count fails loudly}
+  S4 -- no --> RED
+  S4 -- yes --> S5{mutations caught == total, total > 0?}
+  S5 -- no --> RED
+  S5 -- yes --> S6[holds, not failures:<br/>UNCALIBRATED_MAX rose, or ASSUMPTIONS recorded]
+  S6 --> S7{judge verdict}
+  S7 -- missing or unparseable --> RED
+  S7 -- approve, but blockers exist --> OV[GATE_OVERRIDE to request_changes<br/>one-way: it can only add a reason to block] --> RED
+  S7 -- approve, nothing held --> PASS([state passed, exit 0<br/>merge.py called with the counts])
+  S7 -- approve, something held --> HELD([state held, exit 0<br/>PR comment explains, factory carries on])
+  S7 -- reject --> REJ([state rejected, exit 3])
+  RED([state failed, exit 3<br/>findings + gate log to .factory/findings])
+  classDef code fill:#172033,stroke:#2dd4bf,color:#e2e8f0
+  classDef human fill:#1e293b,stroke:#f87171,color:#e2e8f0
+  class S0,S1,S2,S3,S4,S5,S6,S7,OV,PASS,RED,REJ code
+  class HUM,HELD,E2 human
+```
+
 Then one of four endings:
 
 | Verdict | State written | Exit | What happens |
@@ -442,6 +585,28 @@ Three exit codes, and the split matters:
 | 1 | refused, needs a human |
 | **2** | refused, **already handled** — the branch was behind base, so the PR was requeued to `open` for a fresh validation |
 
+```mermaid
+flowchart TD
+  G[gate.py, end of a green validation] --> M
+  D[dispatch.py finds a PR in passed] --> M
+  M[merge.py main, line 208] --> C1{target is a PR, state passed,<br/>head branch exists?}
+  C1 -- no --> X1([exit 1, needs a human])
+  C1 -- yes --> C2{guard.main again,<br/>origin/base..origin/branch}
+  C2 -- fails --> X1
+  C2 -- ok --> C3{branch contains base?<br/>git merge-base --is-ancestor}
+  C3 -- behind --> RQ[requeue: state open] --> X2([exit 2, already handled<br/>next tick revalidates])
+  C3 -- yes --> C4{GitHub re-read: mergeable,<br/>mergeStateStatus, isDraft, baseRefName}
+  C4 -- BLOCKED, UNKNOWN, empty --> X1
+  C4 -- clean --> SQ[gh pr merge --squash]
+  SQ --> RF[raise_floor: monotonic,<br/>existing keys only, never a _MAX] --> X0([exit 0, merged])
+  X0 --> DP{deploy.py, from the dispatcher}
+  DP -- fails --> NT[not an escalation of the PR:<br/>needs-human.md line + notify, main is ahead of what runs]
+  classDef code fill:#172033,stroke:#2dd4bf,color:#e2e8f0
+  classDef human fill:#1e293b,stroke:#f87171,color:#e2e8f0
+  class G,D,M,C1,C2,C3,C4,RQ,SQ,RF,X0,X2,DP,NT code
+  class X1 human
+```
+
 Without the split, the dispatcher escalated every refusal including the one merge.py
 had just recovered from. The PR went back to `open` and then straight to
 `needs-human` one line later — terminal for nodes. A recovery that undid itself.
@@ -478,6 +643,18 @@ look at something already done.
 back to state `open` (label `factory:needs-review`), so the next tick hands it to a
 fresh validation.
 
+```mermaid
+flowchart LR
+  R[resolve<br/>script] --> P[prepare<br/>script: reads .factory/findings/target.json<br/>from SHARED]
+  P --> F[fix<br/>model medium, fresh<br/>Edit and Bash, git and gh denied, holdout denied]
+  F --> L[land<br/>script: commits, pushes,<br/>state back to open]
+  L --> V[next tick: a fresh factory-validate]
+  classDef code fill:#172033,stroke:#2dd4bf,color:#e2e8f0
+  classDef model fill:#1e293b,stroke:#fb923c,color:#e2e8f0
+  class R,P,L,V code
+  class F model
+```
+
 > **A fix is never self-certified.** The node that made the change does not get to
 > decide the change worked. This is why `fix` is a separate workflow rather than a loop
 > inside `validate`: a fix running in the same process as the judgement it answers can
@@ -504,9 +681,18 @@ itself before anyone has watched a full cycle is a queue nobody trusts.
 It runs the full gate against `main` and files an issue for anything broken. That
 closes the loop:
 
-```
-regression finds a break in merged code -> files an issue with evidence
-    -> triage accepts it -> implement opens a PR -> validate judges it -> merge
+```mermaid
+flowchart LR
+  S[sync<br/>script: fast-forward main] --> U[suite<br/>script: the full gate against main]
+  U -- green == false --> D[diagnose<br/>model medium, fresh<br/>Read Glob Grep Write Bash, holdout denied]
+  U -- green --> FI
+  D --> FI[file-issues<br/>script, all_done<br/>files only at dial 4+, only with proof]
+  FI -- an issue with evidence --> T[triage] --> I[implement] --> V[validate] --> M[merge]
+  classDef code fill:#172033,stroke:#2dd4bf,color:#e2e8f0
+  classDef model fill:#1e293b,stroke:#fb923c,color:#e2e8f0
+  classDef wf fill:#1e293b,stroke:#fb923c,color:#e2e8f0
+  class S,U,FI code
+  class D model
 ```
 
 No human anywhere unless all of that fails.
@@ -545,6 +731,69 @@ cannot prove its own test harness ran is worse than one that stayed quiet.
 
 The `ROOT` / `SHARED` split is the one to get right. See
 [key-concepts.md](key-concepts.md#memory-and-safety).
+
+---
+
+## Who talks to whom
+
+The same lap as a conversation between the processes. Two things the prose above
+does not make obvious: **GitHub is the only channel between ticks** (no process talks
+to another directly; each one writes a label and exits), and **the tick never waits**,
+so every hand-off to Archon is a detach, and the answer arrives one or more ticks
+later as a label change.
+
+```mermaid
+sequenceDiagram
+  autonumber
+  actor You
+  participant GH as GitHub<br/>labels, issues, PRs
+  participant T as dispatch.py<br/>one tick
+  participant AR as Archon
+  participant WT as worktree nodes
+  participant SH as .factory in SHARED<br/>locks, ledger, findings
+  participant N as notify.sh
+
+  You->>GH: file issue 12
+  T->>GH: read labels, stop label, queue
+  T->>SH: watchdog reads ledger.jsonl
+  T->>SH: acquire lock triage-gh-issue-12
+  T->>AR: workflow run factory-triage --no-worktree --detach
+  T->>SH: ledger: dispatch
+  Note over T: exits
+  AR->>GH: apply-triage.py: factory:accepted, priority:high
+  T->>AR: next tick: workflow get run-id, settled?
+  T->>SH: release lock, ledger: settle + cost_usd
+  T->>AR: workflow run factory-implement --branch factory/implement-issue-12 --detach
+  AR->>WT: resolve, preflight, prime, plan, gate-plan, implement, commit, guard, selfcheck, review
+  WT->>GH: open-pr.py: push, PR 14 Fixes 12, factory:needs-review
+  T->>AR: next tick: validate gh:pr:14 --branch --detach
+  AR->>WT: prepare.py sets factory:validating, gate-run, brief, judge
+  WT->>SH: apply-verdict / gate.py: findings, counts
+  WT->>GH: state passed, held or failed
+  alt passed
+    WT->>GH: merge.py: gh pr merge --squash, factory:merged, issue done
+    WT->>WT: raise_floor in floor.json
+  else failed, under the cap
+    T->>AR: next tick: factory-fix --branch --detach
+    AR->>SH: prepare-fix.py reads findings
+    AR->>GH: land-fix.py: back to factory:needs-review
+  else held
+    You->>GH: factory accept, back to open
+  end
+  opt anything escalates
+    T->>GH: factory:needs-human on PR and issue
+    T->>SH: needs-human.md, ledger: escalate
+    T->>N: message on stdin
+    N-->>You: ntfy push, webhook, or toast
+  end
+```
+
+One hazard the diagram hides. Step 2 reads GitHub, and an escalation written seconds
+earlier may not be visible yet; GitHub does not promise read-after-write. A validation
+was escalated at 19:21:55 and re-dispatched at 19:22:03 from a stale read. The
+dispatcher now remembers what **this tick** escalated (`escalated_here`, `dispatch.py`
+just after the reconcile sweep) and refuses to dispatch it again, because the transition
+table governs moves, not reads.
 
 ---
 

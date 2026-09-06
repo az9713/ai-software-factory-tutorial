@@ -22,6 +22,40 @@ Cole's framing. Everything in the repo is one of these.
 
 Component 5 is the whole build. Components 1–4 ship done.
 
+### The layers, and where the engine boundary is
+
+Read it top to bottom as "who calls whom": each layer only calls the one below it.
+The engine (orange) sits in the middle, and it is the only layer that needs
+replacing to move off Archon. The three files on the right are read by every run and
+written only by you.
+
+```mermaid
+flowchart TD
+  YOU([you<br/>file issues, move labels from a phone,<br/>factory accept, factory level, the stop label])
+  GH[(GitHub<br/>the labels are the state; issues and PRs,<br/>read and written through gh)]
+  TR[Component 2, the trigger: a poll, never a push<br/>cron / Scheduled Task every 30 min, .factory/loop.sh every 60 s,<br/>regress-trigger.py weekly]
+  MA[the machinery, factory/: plain Python, ~5,000 lines, imports no engine<br/>dispatch.py, state.py, gate.py, merge.py, guard.py,<br/>watchdog.py, ledger.py, notify.py, tripwire.py]
+  EN[Component 1, the engine: Archon, seven shell-outs away<br/>archon workflow run / runs / get, five YAML graphs, eight prompts]
+  HA[Component 5, the validation harness, harness/: the part you build<br/>ci.py, appproc.py, agentcheck.py, mutations/, and .factory/holdout/]
+  GO[Component 4, guidance, read at every run start<br/>MISSION.md, FACTORY_RULES.md, CLAUDE.md]
+  DE[Component 3, deploy.py<br/>after a merge; refuses without HEALTH_CMD]
+  YOU --> GH
+  YOU -- write --> GO
+  GH <-- labels in, labels out --> MA
+  TR -- python factory/dispatch.py --> MA
+  MA -- "archon workflow run --detach, runs, get" --> EN
+  EN -- script nodes call gate.py, guard.py, merge.py --> MA
+  EN -- gate-run calls harness/ci.py --> HA
+  EN -. prompts read .-> GO
+  MA -- after a merge --> DE
+  classDef code fill:#172033,stroke:#2dd4bf,color:#e2e8f0
+  classDef model fill:#1e293b,stroke:#fb923c,color:#e2e8f0
+  classDef human fill:#1e293b,stroke:#f87171,color:#e2e8f0
+  class TR,MA,HA,DE code
+  class EN model
+  class YOU,GO human
+```
+
 ---
 
 ## What is enforced in code, and what is a prompt
@@ -121,6 +155,52 @@ Copied to `factory/` in your repo.
 | `notify.sh` | Where escalations go. Writes the log first and unconditionally, then tries `FACTORY_NTFY_TOPIC` / `FACTORY_WEBHOOK_URL`, then a desktop notification, and says out loud when it could not deliver. |
 | `locks/floor.json` | The ratchet. Protected. |
 | `holdout/HOLDOUT.md` | **Yours to write.** Read-denied to every builder node. |
+
+### Who is a process, and for how long
+
+Nothing in the factory is a service. Two things run for a long time and neither of
+them does any work: `loop.sh` (a `while true` with a PID file) and `monitor.py` (tails
+a log). Everything that does work is a one-shot process that exits, and the runs
+Archon starts outlive the tick that started them by twenty minutes or more.
+
+```mermaid
+flowchart TD
+  subgraph long [long-lived, no work of their own]
+    LO[bash .factory/loop.sh<br/>singleton by .factory/loop.pid<br/>tick every 60 s, per-tick cap 900 s]
+    MO[python .factory/monitor.py<br/>tails .factory/runs/loop.log + needs-human.md<br/>quiet for 6 min is an event]
+  end
+  subgraph sched [scheduled, unsupervised]
+    CR[cron / schtasks factory-name<br/>every INTERVAL_MINUTES, 30]
+    RG[cron / schtasks factory-name-regress<br/>Mondays 06:00, logs to .factory/factory.log]
+  end
+  subgraph shot [one-shot, seconds]
+    T[python factory/dispatch.py<br/>reads, dispatches, exits]
+    NT[bash .factory/notify.sh]
+    RT[python factory/regress-trigger.py]
+  end
+  subgraph detached [detached, minutes to an hour]
+    AR[archon workflow run --detach<br/>one run = one worktree = nodes in sequence,<br/>each model node a fresh session]
+  end
+  LO --> T
+  CR --> T
+  RG --> RT --> AR
+  T -- "--detach" --> AR
+  T --> NT
+  AR -. status and cost, asked on a later tick .-> T
+  LO -- writes --> LG[.factory/runs/loop.log] --> MO
+  classDef code fill:#172033,stroke:#2dd4bf,color:#e2e8f0
+  classDef model fill:#1e293b,stroke:#fb923c,color:#e2e8f0
+  class LO,MO,CR,RG,T,NT,RT code
+  class AR model
+```
+
+Consequences worth holding: a tick started by cron has no supervisor, so
+`dispatch.py` announces its own death (`DISPATCHER_FAULT`, `dispatch.py:905`) because
+nobody else would. The loop and the schedule are two independent triggers for the
+same tick; running both is safe because a tick is idempotent, but the per-target lock
+only guards **one** dispatcher against itself, which is why `loop.sh` refuses to start
+twice. And `monitor.py` watches the loop's log only; under `factory arm` alone, with
+no loop running, nothing watches for silence.
 
 ### `template/` root — governance
 
@@ -258,6 +338,37 @@ The trigger message (`"implement gh:issue:12"`) is how the target reaches the ru
 `resolve-target.py` parses it deterministically before any model sees anything, and it
 arrives as an environment variable rather than substituted text — that is the
 injection guard, and the reason it cannot be an inline bash one-liner.
+
+### How data moves between nodes
+
+Four channels, and each one is used for a different kind of thing. Nothing here is a
+function call: every node is a separate process, and most are a separate model session.
+
+```mermaid
+flowchart LR
+  D[dispatch.py] -- "trigger message<br/>implement gh:issue:12" --> AR[Archon]
+  AR -- "env ARGUMENTS" --> RS[resolve-target.py]
+  RS -- "stdout, one JSON payload<br/>checked against output_format<br/>nodeio.emit; notes go to stderr" --> AR
+  AR -- "with: target: $resolve.output.target<br/>bound into the next node's env" --> PF[preflight.py]
+  PF --> PL[plan<br/>model node]
+  PL -- "files: plan, ASSUMPTIONS, ESCALATE<br/>in ARTIFACTS_DIR, worktree-local" --> GP[gate-plan.py]
+  GP -- "proceed: true or false<br/>read by when: on two nodes" --> AR
+  V[validate run<br/>apply-verdict / gate.py] -- "files in SHARED<br/>.factory/findings/target.json" --> FX[fix run, a later process]
+  V -- "labels via gh<br/>the only channel between runs" --> GH[(GitHub)]
+  GH --> D
+  classDef code fill:#172033,stroke:#2dd4bf,color:#e2e8f0
+  classDef model fill:#1e293b,stroke:#fb923c,color:#e2e8f0
+  class D,RS,PF,GP,V,FX code
+  class AR,PL model
+```
+
+| Channel | Carries | Between | Why that channel |
+|---|---|---|---|
+| environment variable | the trigger message, bound inputs | Archon → a node | never substituted into text a model reads: the injection guard |
+| stdout JSON, `output_format` | a node's value (`proceed`, `target`, `verdict`) | node → Archon → `$id.output.field` | one payload, parsed; a stray `print()` breaks it several nodes downstream (`nodeio.py`) |
+| files in `$ARTIFACTS_DIR` | the plan, `ASSUMPTIONS`, `ESCALATE`, the PR record | model node → the script after it, same run | too big for a schema; dies with the worktree |
+| files in `SHARED/.factory/` | findings, counts, assumptions, the ledger | one **run** → a later run, or the tick | must outlive the worktree |
+| GitHub labels and PR body | state, `Fixes #N` | everything → everything, across ticks | the one shared, visible, phone-editable store |
 
 ---
 

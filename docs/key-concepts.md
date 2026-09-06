@@ -3,7 +3,13 @@
 Every term the factory uses, defined once, with the file that enforces it.
 
 > **Tracks:** `template/factory/state.py`, `config.py`, `guard.py`, `gate.py`,
-> `watchdog.py`, `harness/ci.py`. Re-read after any commit touching those.
+> `watchdog.py`, `harness/ci.py`, plus `dispatch.py` (locks), `notify.py` and
+> `.factory/notify.sh` (the escalation chain), `bin/factory.py` (`level`). Re-read
+> after any commit touching those.
+>
+> **Diagram colours, in every doc here:** teal border = a script or code, a model
+> cannot argue past it. Orange border = a model node running a prompt. Red border =
+> a human, or a terminal state only a human leaves.
 
 ---
 
@@ -36,6 +42,28 @@ Level 3 is the destination. A factory that stops at 2 is a code generator with a
 queue, and you are still the bottleneck. `factory doctor` refuses to raise the dial
 past what the evidence supports.
 
+**Where the dial actually lives.** It is one line of source: `config.py:261`,
+`AUTONOMY = _env_int("FACTORY_AUTONOMY", 0)`. `factory level <n>` (`bin/factory.py:589`)
+first runs `doctor.py --level n` and dies if it fails, then **rewrites that line with a
+regex** (`bin/factory.py:626`) and tells you to commit `factory/config.py`, which is a
+protected file, so raising the dial is always a human commit. The environment variable
+`FACTORY_AUTONOMY` overrides it for one invocation only, and a level set that way
+reverts on the next scheduled tick. There is no level file and no flag on GitHub.
+
+```mermaid
+flowchart LR
+  H([you type factory level 3]) --> D[doctor.py --level 3<br/>the evidence check]
+  D -- fails --> R[Refused. The dial stays.]
+  D -- passes --> W[regex rewrite of one line<br/>factory/config.py line 261]
+  W --> C([you commit config.py<br/>it is a protected file])
+  C --> T[every later tick reads<br/>config.AUTONOMY]
+  E[FACTORY_AUTONOMY=n in the env] -. one invocation only .-> T
+  classDef code fill:#172033,stroke:#2dd4bf,color:#e2e8f0
+  classDef human fill:#1e293b,stroke:#f87171,color:#e2e8f0
+  class D,W,T,E code
+  class H,C,R human
+```
+
 **Target** — one unit of work, named as a string: `gh:issue:12` or `gh:pr:14`. Parsed
 by `state.parse_target()`. Every script in the system takes one.
 
@@ -58,6 +86,61 @@ the misunderstanding.
 **PR states** (`state.py:85`): `open`, `validating`, `passed`, `failed`, `rejected`,
 `merged`, `needs-human`, `held`.
 
+The two machines, drawn from `TRANSITIONS` (`state.py:88`). Every state on both
+diagrams except `merged` may also move to `needs-human`; those edges are left off so
+the rest is readable. `needs-human` has **no** outgoing edge: only a human removes the
+label.
+
+```mermaid
+stateDiagram-v2
+  direction LR
+  state "untriaged (no factory label)" as untriaged
+  state "in-progress" as inprog
+  state "closed-unlabelled" as closed
+  state "needs-human" as nh
+  [*] --> untriaged : issue filed
+  untriaged --> accepted : triage
+  untriaged --> deferred : triage
+  untriaged --> rejected : triage
+  accepted --> inprog : implement dispatched
+  accepted --> rejected
+  inprog --> done : PR merged
+  inprog --> accepted : walked back
+  deferred --> accepted
+  rejected --> accepted
+  [*] --> closed : GitHub closed it via Closes N
+  closed --> done
+  closed --> deferred
+  closed --> rejected
+  nh --> [*] : a human removes the label
+```
+
+```mermaid
+stateDiagram-v2
+  direction LR
+  state "open (factory:needs-review)" as open
+  state "passed (factory:approved)" as passed
+  state "failed (factory:needs-fix)" as failed
+  [*] --> open : open-pr.py, or land-fix.py
+  open --> validating : prepare.py takes it
+  validating --> passed : approve, nothing held
+  validating --> held : approve, something held
+  validating --> failed : request_changes
+  validating --> rejected : reject
+  failed --> open : fix lands, attempt under the cap
+  failed --> rejected
+  held --> open : factory accept
+  held --> rejected
+  passed --> merged : merge.py exit 0
+  passed --> open : merge.py exit 2, behind base, requeued
+  merged --> [*]
+```
+
+One row is shared. `TRANSITIONS` is a single dict keyed by state name, and `rejected`
+is both an issue state and a PR state, so a rejected PR carries the issue's row
+(`rejected → accepted`), which no PR ever uses. Harmless, and worth knowing before you
+read the table and think a PR can become `accepted`.
+
 Three PR states are easy to confuse, and the difference is the whole safety design:
 
 | State | Label | Means | Who moves it out |
@@ -76,6 +159,27 @@ readers of `factory:accepted` both claim the issue. The lock is the mutex
 (`dispatch.py`, `acquire()`). It is released when the engine reports the run settled,
 reaped when its recorded PID is gone plus 5 minutes of grace, or aged out after 180
 minutes.
+
+Three ways out, and the order matters: the honest one first, the slow ones as backstop.
+`release_settled_locks()` (`dispatch.py:542`) asks Archon for the run id the lock
+recorded and releases **only on a provable "finished"**. Every unknown answer keeps
+the lock, because the first version guessed, released every lock one tick after taking
+it, and then escalated a live lap as dead. `reap_locks()` (`dispatch.py:176`) is the
+backstop: PID gone for `LOCK_GRACE_MINUTES` (5, `config.py:291`), or any lock older
+than `LOCK_STALE_MINUTES` (180, `config.py:290`).
+
+```mermaid
+stateDiagram-v2
+  direction LR
+  state "held by one (action, target)" as held
+  [*] --> held : acquire at dispatch, records PID and run id
+  held --> released : Archon says the run settled
+  held --> reaped : PID gone, and older than 5 min
+  held --> reaped : older than 180 min, whatever the PID says
+  held --> held : any unknown answer keeps the lock
+  released --> [*]
+  reaped --> [*]
+```
 
 ---
 
@@ -159,6 +263,65 @@ built, validated thing instead of an abstract one in the dark.
 three, or it is not an escalation (`dispatch.escalate()`). The stop list is
 deliberately short: seven items, `FACTORY_RULES.md` §7.2.
 
+**The notification chain** — one function, `notify.send()` in `factory/notify.py`,
+called from five places. The docstring's three routes to `needs-human` (the
+dispatcher, the gate, the fix-attempt cap) go through two of them:
+`dispatch.escalate()` (`dispatch.py:81`, which the fix cap also uses) and `gate.fail()`
+(`gate.py:55`). The other three are not escalations of a target at all: a watchdog halt
+(`watchdog.py:290`), a deploy that failed **after** a successful merge
+(`dispatch.py:858`), and the dispatcher itself crashing (`dispatch.py:905`).
+`notify.send()` never raises. It pipes the message on stdin to `FACTORY_NOTIFY_CMD`,
+which defaults to `bash .factory/notify.sh` (`config.py:431`), and that script writes
+the log **first and unconditionally**, then tries the loudest channel it has.
+
+```mermaid
+flowchart TD
+  A[dispatch.escalate<br/>dispatch.py line 81] --> N
+  B[gate.fail<br/>gate.py line 55] --> N
+  C[watchdog.halt<br/>watchdog.py line 290] --> N
+  D[deploy failed after a merge<br/>dispatch.py line 858] --> N
+  E[the tick itself crashed<br/>dispatch.py line 905] --> N
+  N[notify.send in factory/notify.py<br/>never raises, 60 s timeout] --> F{FACTORY_NOTIFY_CMD?}
+  F -- unset --> W[NOT NOTIFIED<br/>waits in .factory/needs-human.md]
+  F -- default --> S[bash .factory/notify.sh]
+  S --> L[first, always: append .factory/escalations.log<br/>before anything can fail]
+  L --> T{FACTORY_NTFY_TOPIC set?}
+  T -- "yes, curl --fail ok" --> P([phone push via ntfy.sh])
+  T -- no, or failed --> H{FACTORY_WEBHOOK_URL set?}
+  H -- "yes, curl --fail ok" --> K([JSON webhook, Slack shape])
+  H -- no, or failed --> Q([desktop toast: works on macOS and Linux<br/>on Windows it reports NOTIFIED via desktop<br/>and shows nothing])
+  Q -- failed --> U[NOTIFY_UNDELIVERED on stdout]
+  U --> M
+  T -. NOTIFY_NTFY_FAILED .-> M
+  H -. NOTIFY_WEBHOOK_FAILED .-> M
+  M[.factory/monitor.py greps loop.log<br/>for NOTIFY_*_FAILED and NOTIFY_UNDELIVERED]
+  classDef code fill:#172033,stroke:#2dd4bf,color:#e2e8f0
+  classDef human fill:#1e293b,stroke:#f87171,color:#e2e8f0
+  class A,B,C,D,E,N,S,L,U,M,W code
+  class P,K,Q human
+```
+
+Three things the picture makes visible.
+
+1. **`curl --fail` is load-bearing**: without it a 4xx from ntfy or Slack exits 0 and
+   a rejected message is reported as delivered, a false success inside the alarm.
+2. **On Windows the desktop fallback is that false success.** The `*)` branch of
+   `.factory/notify.sh:89` runs one PowerShell line that loads the
+   `ToastNotificationManager` type and pipes it to `Out-Null`. It never builds a
+   notification and never calls `Show()`. PowerShell exits 0, `delivered="desktop"`,
+   and the script prints `NOTIFIED via desktop` with nothing on screen. Verified on
+   this machine on 2026-09-05: a copy of the script run with no channel variables set
+   printed exactly that and exited 0. `monitor.py` cannot see it either, because the
+   line it greps for is `NOTIFY_DESKTOP_FAILED`, which never fires. On macOS
+   (`osascript`) and Linux (`notify-send`) the same branch does show a notification.
+   **On Windows, set `FACTORY_NTFY_TOPIC` or `FACTORY_WEBHOOK_URL` before level 3, and
+   run `python factory/notify.py --test` to see something actually arrive.**
+3. **The channel variables are read from the environment of whatever runs the tick.**
+   `bash .factory/loop.sh` inherits your terminal. A Scheduled Task or cron entry
+   installed by `factory arm` does not; set `FACTORY_NTFY_TOPIC` where that process
+   can see it (a user environment variable on Windows, the crontab itself on Unix) or
+   the armed factory falls through to the desktop branch above.
+
 ---
 
 ## Memory and safety
@@ -213,6 +376,39 @@ to, the worktree is deleted, and the fix node — a separate run, later — find
 It does not crash. It re-reads the diff and invents an objection, so every fix attempt
 becomes a guess at what the validator wanted.
 
+```mermaid
+flowchart LR
+  subgraph main [the main checkout = SHARED, config.py line 83]
+    direction TB
+    G[(.git, the one real git dir)]
+    R1[.factory/runs/*.log]
+    R2[.factory/locks-runtime/*.lock]
+    R3[.factory/ledger.jsonl]
+    R4[.factory/findings/, assumptions/]
+    R5[.factory/needs-human.md, decisions.md]
+    R6[.factory/STOP, trigger.json]
+  end
+  subgraph wt [one worktree per run = ROOT, config.py line 82]
+    direction TB
+    W1[the branch under test]
+    W2[harness/ and END-TO-END.md]
+    W3[.factory/locks/floor.json, in git, protected]
+    W4[.factory/holdout/, in git, read-denied]
+    W5[ARTIFACTS_DIR: plan, ASSUMPTIONS, ESCALATE]
+  end
+  wt -- "git rev-parse --git-common-dir" --> G
+  V[validate run<br/>writes findings] --> R4
+  R4 --> X[fix run, later,<br/>a different worktree]
+  W5 -. deleted with the worktree .-> Z[gone]
+  classDef code fill:#172033,stroke:#2dd4bf,color:#e2e8f0
+  class V,X code
+```
+
+Rule of thumb from the two boxes: **files the run under test must see stay in the
+worktree; records another run must find later go to the main checkout.** `STOP` is
+`SHARED` (`config.py:303`) because a stop button that only works inside the worktree
+that is already running is not a stop button.
+
 ---
 
 ## Engine terms
@@ -237,8 +433,13 @@ argument rests on some nodes not having seen it.
 
 **Model tier** — `small` / `medium` / `large`, not literal model IDs. Archon resolves
 a tier against whatever provider is configured, so a factory written in tiers survives
-a provider swap. Set in `config.py`: `MODEL_PLAN=large`, `MODEL_BUILD=medium`,
-`MODEL_JUDGE=medium`, `MODEL_SORT=small`.
+a provider swap. **The tier that runs is the `model:` field in the YAML**, per node or
+per workflow: `prime` small, `plan` large, `implement` and `review` medium, `judge`
+inherits `factory-validate`'s default of medium, `classify` inherits `factory-triage`'s
+default of small. `config.py:130` also defines `MODEL_PLAN`, `MODEL_BUILD`,
+`MODEL_JUDGE` and `MODEL_SORT`, but nothing reads them except the `factory status`
+printout (`config.py:456`). Setting `FACTORY_MODEL_PLAN=small` changes what `status`
+says and nothing else. To change a tier, edit the YAML.
 
 ---
 

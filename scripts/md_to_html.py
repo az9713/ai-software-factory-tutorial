@@ -1,8 +1,73 @@
+import json
+import os
 import pathlib
 import re
+import shutil
+import subprocess
+import sys
+import tempfile
 import markdown
 
 DOCS = pathlib.Path(__file__).resolve().parent.parent / "docs"
+
+# ```mermaid fences are pre-rendered to inline SVG with mermaid-cli (`mmdc`, needs a
+# Chrome), so the HTML is readable offline and GitHub still renders the .md natively.
+CHROME = os.environ.get(
+    "DOCS_CHROME", r"C:\Program Files\Google\Chrome\Application\chrome.exe"
+)
+MERMAID_FENCE = re.compile(r"^```mermaid[ \t]*\n(.*?)^```[ \t]*$", re.M | re.S)
+MERMAID_THEME = {
+    "theme": "base",
+    "themeVariables": {
+        "darkMode": True, "background": "#0f172a", "fontFamily": "Segoe UI, Helvetica, Arial, sans-serif",
+        "fontSize": "14px", "primaryColor": "#1e293b", "primaryTextColor": "#e2e8f0",
+        "primaryBorderColor": "#94a3b8", "secondaryColor": "#172033", "tertiaryColor": "#0f172a",
+        "lineColor": "#94a3b8", "textColor": "#e2e8f0", "mainBkg": "#1e293b",
+        "nodeBorder": "#94a3b8", "clusterBkg": "#172033", "clusterBorder": "#334155",
+        "titleColor": "#e2e8f0", "edgeLabelBackground": "#0f172a",
+        "actorBkg": "#1e293b", "actorBorder": "#fb923c", "actorTextColor": "#e2e8f0",
+        "actorLineColor": "#334155", "signalColor": "#e2e8f0", "signalTextColor": "#e2e8f0",
+        "labelBoxBkgColor": "#172033", "labelBoxBorderColor": "#334155", "labelTextColor": "#e2e8f0",
+        "loopTextColor": "#e2e8f0", "noteBkgColor": "#172033", "noteTextColor": "#cbd5e1",
+        "noteBorderColor": "#334155", "activationBkgColor": "#334155", "activationBorderColor": "#fb923c",
+        "sequenceNumberColor": "#0f172a",
+    },
+    "flowchart": {"curve": "basis", "htmlLabels": False, "padding": 12},
+    "sequence": {"mirrorActors": False, "actorMargin": 40, "useMaxWidth": True},
+}
+
+
+def render_mermaid(src: str, svg_id: str) -> str:
+    mmdc = shutil.which("mmdc")
+    if not mmdc:
+        sys.exit("mmdc (mermaid-cli) is not on PATH: npm i -g @mermaid-js/mermaid-cli")
+    if not pathlib.Path(CHROME).exists():
+        sys.exit(f"Chrome not found at {CHROME}; set DOCS_CHROME to its path")
+    with tempfile.TemporaryDirectory() as td:
+        td = pathlib.Path(td)
+        (td / "pp.json").write_text(json.dumps({"executablePath": CHROME, "args": ["--no-sandbox"]}))
+        (td / "theme.json").write_text(json.dumps(MERMAID_THEME))
+        (td / "in.mmd").write_text(src, encoding="utf-8")
+        p = subprocess.run(
+            [mmdc, "-i", str(td / "in.mmd"), "-o", str(td / "out.svg"), "-b", "transparent",
+             "-I", svg_id, "-p", str(td / "pp.json"), "-c", str(td / "theme.json")],
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+        )
+        if p.returncode != 0 or not (td / "out.svg").exists():
+            sys.exit(f"mmdc failed on {svg_id}:\n{p.stdout}\n{p.stderr}\n--- source ---\n{src}")
+        return (td / "out.svg").read_text(encoding="utf-8")
+
+
+def extract_mermaid(text: str, stem: str) -> tuple[str, list[str]]:
+    # Swap each fence for a placeholder paragraph; put the rendered SVG back after markdown.
+    figures: list[str] = []
+
+    def sub(m: re.Match) -> str:
+        i = len(figures)
+        figures.append(render_mermaid(m.group(1), f"mmd-{stem}-{i}"))
+        return f"\nMERMAIDFIG{i}\n"
+
+    return MERMAID_FENCE.sub(sub, text), figures
 
 TEMPLATE = """<!doctype html>
 <html lang="en" data-theme="dark">
@@ -35,6 +100,8 @@ TEMPLATE = """<!doctype html>
   th, td {{ border: 1px solid var(--border); padding: 0.5rem 0.75rem; text-align: left; }}
   th {{ background: var(--card); }}
   hr {{ border: none; border-top: 1px solid var(--border); margin: 2rem 0; }}
+  figure.diagram {{ margin: 1.5rem 0; padding: 1rem; background: var(--card); border: 1px solid var(--border); border-radius: 6px; overflow-x: auto; }}
+  figure.diagram svg {{ display: block; margin: 0 auto; max-width: 100%; height: auto; }}
 </style>
 </head>
 <body>
@@ -64,10 +131,15 @@ def relink(html_body: str, stems: set) -> str:
 
 def convert(md_path: pathlib.Path, stems: set) -> None:
     text = md_path.read_text(encoding="utf-8")
+    text, figures = extract_mermaid(text, md_path.stem)
     html_body = markdown.markdown(
         text, extensions=["fenced_code", "tables", "toc", "sane_lists"]
     )
     html_body = relink(html_body, stems)
+    for i, svg in enumerate(figures):
+        html_body = html_body.replace(f"<p>MERMAIDFIG{i}</p>", f'<figure class="diagram">{svg}</figure>')
+    if figures:
+        print(f"  {len(figures)} diagram(s) rendered for {md_path.name}")
     title = title_from(text, md_path.stem)
     html_path = md_path.with_suffix(".html")
     html_path.write_text(TEMPLATE.format(title=title, body=html_body), encoding="utf-8")

@@ -272,6 +272,28 @@ none of it is Archon-specific:
 
 Any one alone is theatre. All three is the reason to merge code nobody read.
 
+```mermaid
+flowchart TD
+  B[the builder<br/>can read harness/ and iterate until green]
+  H[holdout<br/>.factory/holdout/HOLDOUT.md<br/>assertions the builder cannot read]
+  M[mutation set<br/>harness/mutations/defects.json<br/>proves the assertions can go red]
+  R[ratchet<br/>.factory/locks/floor.json<br/>the count cannot fall without a human commit]
+  B -. denied_tools: Read .-> H
+  H -- can it fail? --> M
+  M -- how many are there? --> R
+  R -- raise_floor on every merge --> H
+  T([trust a merge nobody read])
+  H --> T
+  M --> T
+  R --> T
+  classDef code fill:#172033,stroke:#2dd4bf,color:#e2e8f0
+  classDef model fill:#1e293b,stroke:#fb923c,color:#e2e8f0
+  classDef human fill:#1e293b,stroke:#f87171,color:#e2e8f0
+  class H,M,R code
+  class B model
+  class T human
+```
+
 ---
 
 ## Following Cole, week to week

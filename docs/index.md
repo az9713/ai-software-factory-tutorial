@@ -18,6 +18,38 @@ Every path in these docs is written from the target repo's root unless it starts
 `template/` or `bin/`. `template/factory/dispatch.py` in this repo becomes
 `factory/dispatch.py` in yours.
 
+```mermaid
+flowchart LR
+  subgraph cole [Cole's repo, remote upstream, push disabled]
+    UP[coleam00/ai-software-factory<br/>one branch, no tags]
+  end
+  subgraph here [this repo, remote origin, private]
+    direction TB
+    BIN[bin/factory.py<br/>init, doctor, level, arm, accept, ...]
+    TPL[template/<br/>factory/, harness/, .archon/, .factory/,<br/>MISSION.md, FACTORY_RULES.md, skills]
+    DOC[docs/<br/>these pages]
+  end
+  subgraph target [a target repo, somewhere else, never this folder]
+    direction TB
+    F[factory/ + harness/<br/>the runtime, copied not linked]
+    W[.archon/workflows/factory/<br/>five graphs, eight prompts]
+    S[.factory/<br/>runs, locks, ledger, findings, holdout, floor]
+    G[MISSION.md, END-TO-END.md, HOLDOUT.md<br/>the three files only you can write]
+  end
+  GH[(GitHub<br/>the labels are the state)]
+  YOU([you])
+  UP -- git whatsnew, git sync --> here
+  BIN -- python bin/factory.py init --> target
+  BIN -- bin/sync-to.py, later fixes --> target
+  F <--> GH
+  YOU --> GH
+  YOU -- write --> G
+  classDef code fill:#172033,stroke:#2dd4bf,color:#e2e8f0
+  classDef human fill:#1e293b,stroke:#f87171,color:#e2e8f0
+  class BIN,F,W,S code
+  class YOU,G human
+```
+
 ---
 
 ## Start here

@@ -47,7 +47,7 @@ factory. **No factory runs here.** This repo is the installer (`bin/`) plus the 
   `template/.factory/notify.sh:89` reports `NOTIFIED via desktop` without showing a
   toast (the PowerShell line only loads a type; no `Show()`). Verified by running a
   copy of the script here. Documented in `docs/key-concepts.md` under the
-  notification chain. Simon has not decided whether to file it upstream.
+  notification chain. Simon decided on 2026-09-05 not to file it upstream.
 
 - **2026-09-05: HTML versions of every `docs/*.md` file, `.md` sources untouched.**
   Built with `scripts/md_to_html.py` (new file, kept — it is the reproducible source
@@ -148,11 +148,10 @@ factory. **No factory runs here.** This repo is the installer (`bin/`) plus the 
 
 **Nothing is in flight.** Simon has not chosen his next move. Candidates, newest first:
 
-0. **Decide on the Windows toast defect** (`template/.factory/notify.sh:89`, see
-   Current state). Options: file it on Cole's repo as an issue with the one-line repro
-   (`echo "gh:pr:0 needs a human: test" | bash .factory/notify.sh` on Windows prints
-   `NOTIFIED via desktop`, no toast), or leave it documented locally only. Simon
-   asked "should I file it" and has not answered. Never push a fix to `upstream`.
+0. ~~Decide on the Windows toast defect~~ **Decided 2026-09-05: do NOT file it
+   upstream.** Simon said "no filing". Nothing was ever created on Cole's repo
+   (verified: no issue or PR by az9713 there). The finding stays documented locally in
+   `docs/key-concepts.md`. Do not re-ask.
 0. **Act on the earlier review** — the anchor grep, the three build exercises, or the
    Archon retry (all listed under Current state). Each is a section, not a new file.
 0. **Two diagram choices Simon may overturn:** mermaid layout with the house palette

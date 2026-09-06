@@ -16,7 +16,32 @@ kept so Simon can follow Cole's development week to week and eventually build hi
 factory. **No factory runs here.** This repo is the installer (`bin/`) plus the template
 (`template/`) that `factory init` copies into a *target* repo.
 
-## Current state (as of 94c59b7, pushed)
+## Current state (as of 988a929, pushed; this handoff refresh is the next commit)
+
+- **2026-09-05: a read-only review of the docs against the original objective.** No repo
+  changes. The objective is at `.ignore/cc1_cole.txt:64` with Simon's three answers at
+  lines 187–193: (1) follow Cole week to week, (2) build his own version, (3) principles /
+  architecture / components, (4) the Archon YAML node schema. Verdict, delivered in chat:
+
+  | Part | Score |
+  |---|---|
+  | 3. principles / components | exceeded — leave it alone |
+  | 4. Archon YAML | met, limited to fields this pack uses (`archon.diy/docs` gave an SSL error) |
+  | 1. follow Cole | met on paper, **never fired** — `upstream/main` is still `51778f6` |
+  | 2. build his own | partly met — both paths specified, no exercise that changes a file |
+
+  Verified today: every `file.py:NN` anchor in `docs/` resolves; `_selftest.py` prints
+  `SELFTEST_PASSED checks=229`; `watchdog.py --explain` matches the table;
+  `SLACK_CAPS_AUTONOMY` defaults `false` at `config.py:243`.
+
+  Suggested next levels (not done, Simon has not chosen): a grep in `index.md` that lists
+  the line anchors so a Cole commit can be checked against them; three build exercises in
+  `study-guide.md` Session 3 (an eighth watchdog detector, stub `dispatch.py:281`, a
+  `PreToolUse` deny hook on `.factory/holdout/**`); retry `archon.diy/docs` once.
+
+- **`.ignore/` layout, for the record.** `cc1`, `cc2`, `cc3_cole.txt` are one session
+  (the docs build) captured three times at growing length; `cc5_cole.txt` is the second
+  session (Archon questions, eight roles, prompt audit). There is no `cc4`.
 
 - **Onboarding docs written and pushed** — five files in `docs/`, 1,500 lines. They fill
   the code-level gap Cole's own docs leave (his cover installing and operating; none read
@@ -63,15 +88,19 @@ factory. **No factory runs here.** This repo is the installer (`bin/`) plus the 
   `git whatsnew` (fetch + list Cole's new commits, changes nothing) and
   `git sync` (fetch + merge + push to origin). Both tested.
 
-- Working tree clean apart from `.ignore/` — Simon's own scratch files, untracked
-  deliberately, not written by Claude. Local `94c59b7` matches `origin/main` (verified
-  via `git ls-remote`). Seven commits ahead of `upstream/main` (`51778f6`), all of them
-  docs.
+- Working tree clean apart from `.ignore/` — Simon's own terminal captures, untracked
+  deliberately, not written by Claude. Local matches `origin/main` (verified via
+  `git ls-remote`). Ahead of `upstream/main` (`51778f6`) by docs commits only.
 
 ## Next task
 
-**Nothing is in flight.** Simon has not chosen his next move. The two open paths, from
-`docs/study-guide.md`:
+**Nothing is in flight.** Simon has not chosen his next move. Three candidates, in the
+order the 2026-09-05 review ranked them:
+
+0. **Act on the review** — the anchor grep, the three build exercises, or the Archon
+   retry (all listed under Current state). Each is a section, not a new file.
+
+The two standing paths, from `docs/study-guide.md`:
 
 1. **Read and run** — Session 2 (the code, ~3 hours) and Session 3 (four offline
    commands, all verified working). Then install into a throwaway repo and work
@@ -112,8 +141,8 @@ are new names. If a conflict ever appears, `git merge --abort` undoes it losing 
 
 ## Session-transient scratch
 
-None. The doc edit went straight into a committed file. The prompt-audit was pure
-reading and `grep` — no scripts written, nothing to regenerate.
+None. The 2026-09-05 review was reading, `grep`, and two offline commands
+(`_selftest.py`, `watchdog.py --explain`) — no scripts written, nothing to regenerate.
 
 ## Known constraints
 

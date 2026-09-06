@@ -16,7 +16,7 @@ kept so Simon can follow Cole's development week to week and eventually build hi
 factory. **No factory runs here.** This repo is the installer (`bin/`) plus the template
 (`template/`) that `factory init` copies into a *target* repo.
 
-## Current state (as of 1202f2c, pushed)
+## Current state (as of 94c59b7, pushed)
 
 - **Onboarding docs written and pushed** — five files in `docs/`, 1,500 lines. They fill
   the code-level gap Cole's own docs leave (his cover installing and operating; none read
@@ -31,6 +31,21 @@ factory. **No factory runs here.** This repo is the installer (`bin/`) plus the 
   | `docs/study-guide.md` | reading order, offline exercises, following upstream |
 
   Landed in `0e7aaf2`; corrected for the new remote layout in `5419a2a` and `30938cf`.
+
+- **`docs/component-map.md` got an "The eight roles" subsection** (`94c59b7`), just
+  before "Workflow-level fields" in the Archon section — a plain, numbered list naming
+  the eight jobs Archon does for this repo, each tied to a row in the existing
+  portability table further down. No other doc changed.
+
+- **A `/claude-api prompt-audit` ran over the whole `template/` prompt surface**
+  (skills, workflow YAML, command files, `MISSION.md`/`FACTORY.md`/`FACTORY_RULES.md`,
+  the holdout/e2e docs — 20 files, ~2,100 lines). Read-only, no repo changes.
+  **Result: clean.** No dated prompting patterns (pressure language, step-by-step
+  scaffolds, prefill/JSON forcing, stale model pins) survived review at high or medium
+  confidence. One low-confidence flag only — four "no longer" phrasings
+  (`FACTORY_RULES.md:141`, `judge.md:76`, `factory-holdout/SKILL.md:59`,
+  `factory-setup/SKILL.md:27`) — judged load-bearing context, not fossils, and left
+  alone. This does not need re-running unless the template's prompt files change.
 
 - **`docs/git-setup.html`** (`1202f2c`) — the git setup explained for someone new to git:
   what a remote is, the two-remote diagram, the three locks, why a fork/plain clone/no
@@ -48,9 +63,10 @@ factory. **No factory runs here.** This repo is the installer (`bin/`) plus the 
   `git whatsnew` (fetch + list Cole's new commits, changes nothing) and
   `git sync` (fetch + merge + push to origin). Both tested.
 
-- Working tree clean apart from `.ignore/cc1_cole.txt` — Simon's own scratch file,
-  untracked deliberately, not written by Claude. Local `1202f2c` matches `origin/main`.
-  Five commits ahead of `upstream/main` (`51778f6`), all of them docs.
+- Working tree clean apart from `.ignore/` — Simon's own scratch files, untracked
+  deliberately, not written by Claude. Local `94c59b7` matches `origin/main` (verified
+  via `git ls-remote`). Seven commits ahead of `upstream/main` (`51778f6`), all of them
+  docs.
 
 ## Next task
 
@@ -96,9 +112,8 @@ are new names. If a conflict ever appears, `git merge --abort` undoes it losing 
 
 ## Session-transient scratch
 
-None. Every edit this session went straight into a committed file. The doc corrections
-were applied with inline `python - <<PY` heredocs, not saved scripts — nothing to
-regenerate.
+None. The doc edit went straight into a committed file. The prompt-audit was pure
+reading and `grep` — no scripts written, nothing to regenerate.
 
 ## Known constraints
 

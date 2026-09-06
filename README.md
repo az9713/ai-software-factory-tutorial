@@ -1,4 +1,11 @@
-# AI Software Factory
+# AI Software Factory (tutorial clone)
+
+> [!NOTE]
+> This repo, `az9713/ai-software-factory-tutorial`, is a personal tutorial clone of
+> [`coleam00/ai-software-factory`](https://github.com/coleam00/ai-software-factory). It
+> exists so the owner can follow Cole's project week to week and learn from it. `docs/`
+> holds the added onboarding material; everything else below is Cole's original README,
+> describing his tool.
 
 A repo that takes work in as an issue and ships validated code out, with nobody at
 the keyboard.

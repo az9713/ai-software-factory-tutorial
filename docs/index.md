@@ -23,7 +23,7 @@ flowchart LR
   subgraph cole [Cole's repo, remote upstream, push disabled]
     UP[coleam00/ai-software-factory<br/>one branch, no tags]
   end
-  subgraph here [this repo, remote origin, private]
+  subgraph here [this repo, remote origin, public]
     direction TB
     BIN[bin/factory.py<br/>init, doctor, level, arm, accept, ...]
     TPL[template/<br/>factory/, harness/, .archon/, .factory/,<br/>MISSION.md, FACTORY_RULES.md, skills]

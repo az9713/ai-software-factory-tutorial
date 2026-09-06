@@ -125,7 +125,7 @@ authenticated, and a test suite that runs.
 
 ```bash
 cd /path/to/throwaway-repo
-python /path/to/ai-software-factory/bin/factory.py init
+python /path/to/ai-software-factory-tutorial/bin/factory.py init
 python factory/doctor.py
 ```
 
@@ -302,13 +302,13 @@ flowchart TD
 subjects are written as findings rather than as changes ("the import check could not
 fail", "three assumptions that break it on a Mac, all on the first tick").
 
-**The remote layout.** `origin` is your own private repo. `upstream` is Cole's, and
+**The remote layout.** `origin` is your own repo. `upstream` is Cole's, and
 its push URL is deliberately set to a non-repository so `git push upstream` fails
 loudly. Your commits never travel to him.
 
 ```bash
 git remote -v
-# origin    https://github.com/az9713/ai-software-factory.git  (fetch/push)
+# origin    https://github.com/az9713/ai-software-factory-tutorial.git  (fetch/push)
 # upstream  https://github.com/coleam00/ai-software-factory.git (fetch)
 # upstream  DISABLED_never_push_to_cole                         (push)
 ```

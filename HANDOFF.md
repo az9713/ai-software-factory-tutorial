@@ -1,4 +1,4 @@
-# HANDOFF — resume point for this clone of ai-software-factory
+# HANDOFF — resume point for this clone of ai-software-factory (now ai-software-factory-tutorial)
 
 **Read this first each new session, then [`docs/index.md`](docs/index.md).**
 This file is the live "what to do next". `docs/` is the standing reference and
@@ -11,10 +11,15 @@ global `~/.claude/CLAUDE.md`.
 
 ## What this repo is
 
-A private clone of [coleam00/ai-software-factory](https://github.com/coleam00/ai-software-factory),
+A tutorial clone of [coleam00/ai-software-factory](https://github.com/coleam00/ai-software-factory),
 kept so Simon can follow Cole's development week to week and eventually build his own
 factory. **No factory runs here.** This repo is the installer (`bin/`) plus the template
 (`template/`) that `factory init` copies into a *target* repo.
+
+**2026-09-05: renamed to `az9713/ai-software-factory-tutorial` and made public**,
+against the "Known constraints" note below about Cole's repo having no LICENSE. Simon
+chose to proceed anyway, framed explicitly as a tutorial clone (see the README banner).
+Revisit that note's caution if this ever needs re-litigating.
 
 ## Current state (as of 66b10a0, pushed; this handoff refresh is the next commit)
 
@@ -131,7 +136,8 @@ factory. **No factory runs here.** This repo is the installer (`bin/`) plus the 
   (this session's watch on it has ended; re-watch only if needed).
 
 - **Repo made independent of Cole's.** `origin` is now
-  `az9713/ai-software-factory` (**private**). Cole's repo is `upstream`, and its push URL
+  `az9713/ai-software-factory-tutorial` (**public**, renamed from `ai-software-factory`
+  and made public on 2026-09-05). Cole's repo is `upstream`, and its push URL
   is set to `DISABLED_never_push_to_cole`, so `git push upstream` fails loudly. Simon's
   commits cannot travel upstream.
 
@@ -209,8 +215,10 @@ mermaid syntax traps are in memory (`mermaid-cli-offline-svg`), not here.
 ## Known constraints
 
 - **Cole's repo has no LICENSE and the README never mentions licensing**, so his code is
-  default copyright. That is why `az9713/ai-software-factory` is **private**. Revisit
-  only if he adds a licence.
+  default copyright. `az9713/ai-software-factory-tutorial` was kept **private** for that
+  reason, then made **public** on 2026-09-05 as a deliberate, explicitly-labelled
+  tutorial clone (Simon's call, README banner names it as such). Still no licence on
+  Cole's repo as of that date — this is a known, accepted risk, not an oversight.
 - **Never push to `upstream`.** Enforced by the broken push URL, not by memory.
 - **Do not run `factory init` in this folder.** It would turn a clean reading copy into a
   running factory and guarantee merge conflicts with Cole forever.

@@ -16,7 +16,7 @@ kept so Simon can follow Cole's development week to week and eventually build hi
 factory. **No factory runs here.** This repo is the installer (`bin/`) plus the template
 (`template/`) that `factory init` copies into a *target* repo.
 
-## Current state (as of 3c428d4, pushed; this handoff refresh is the next commit)
+## Current state (as of 66b10a0, pushed; this handoff refresh is the next commit)
 
 - **2026-09-05 (later, `3c428d4`): 22 diagrams added to Simon's five docs, plus new
   sections on what the docs had not covered.** Diagrams are ```` ```mermaid ```` fences in the
@@ -43,7 +43,7 @@ factory. **No factory runs here.** This repo is the installer (`bin/`) plus the 
   Cole's `first-hour.md` and `incidents.md` are untouched (they exist in `upstream`;
   editing them invites merge conflicts). Their HTML was regenerated unchanged.
 
-  **One real defect found while drawing, not yet reported to Cole:** on Windows,
+  **One real defect found while drawing, deliberately not reported to Cole:** on Windows,
   `template/.factory/notify.sh:89` reports `NOTIFIED via desktop` without showing a
   toast (the PowerShell line only loads a type; no `Show()`). Verified by running a
   copy of the script here. Documented in `docs/key-concepts.md` under the
